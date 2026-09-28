@@ -1,0 +1,24 @@
+id: adr:engineering-shapes-code
+decision: >-
+  The engineering root holds decisions that SHAPE code — "do it this way, not that way":
+  platforms, postures, coding practices, UX principles — the commons every tree may cite, and
+  the engineering WORK itself. What it never holds is implementation description: a record
+  naming how a particular file, class or call works is documenting, not deciding, and belongs
+  in the code.
+rejected:
+  - >-
+    "never code-level" (the first wording) — it read as banning coding practices outright,
+    which would evict exactly the do-it-this-way rulings (portable SQL, bounded clients) that
+    lint enforces and product work rests on
+  - >-
+    implementation description as engineering records — it changes with every refactor and
+    restates what the code already says
+links:
+  domain: adr
+context:
+  why: >-
+    stated in adroit's CLAUDE.md ("The tree") with no record holding it; sharpened 2026-09-28
+    (user-directed): "we make engineering decisions that shape code — 'do it this way, not
+    that way' — and that's the engineering work." The line is decision-vs-description, not
+    high-vs-low level; StageDoor's lint-enforced practice records are compliant as they stand
+  src: CLAUDE.md walk + user ruling, sessions 2026-09-28

@@ -1,0 +1,20 @@
+id: eng:rules-not-implementation
+decision: >-
+  The ledger holds what was deliberately considered and decided — behaviours and expectations. A
+  record states the rule, not the implementation that follows from it: no table, column, class,
+  route, or migration names, except where the name is itself the thing that was chosen. The test is
+  whether a reader learns a decision someone made, or merely how it was carried out.
+rejected: []
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    implementation names go stale on the next refactor while the rule survives it — a permissions
+    decision naming a column and its drop migration aged out the day the migration shipped Sharpened
+    2026-09-20 (user-directed): naming routes and internals bogs the ledger down and makes it less
+    useful — a line like “the signup route dispatches by segment shape, numeric is a legacy id”
+    reads as machinery, not as anything anyone weighed. Details that a rename would invalidate are
+    not decisions; details someone argued about are.
+  src: session 2026-09-20 (user-directed)
+  area: platform

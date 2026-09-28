@@ -1,0 +1,24 @@
+id: adr:capability-contract-artifact
+decision: >-
+  A capability publishes its interface as an ARTIFACT — inputs and outputs in the capability’s own
+  vocabulary — versioned but never refined by sub-choices, like an interface in a typed language.
+  Adherence lives in the CONSUMING decision: the record that needs the capability states how it
+  honors the contract at that point of use. There are no root-level adherence declarations — a
+  binding separated from the decision of how it is done says nothing.
+rejected:
+  - >-
+    the contract as a decision record with refinements — an interface changes as a unit; sub-choices
+    belong to the capability’s tree, not its signature
+  - >-
+    a capabilities: section on each product root — a root-level declaration separates itself from
+    the decision of how it is done, and the root story doesn’t necessarily have anything to do with
+    the capability
+links:
+  domain: adr
+context:
+  why: >-
+    user, ruling 14 verbatim: the contract is an artifact, like an interface in a java app; the
+    connection comes from the actual decision that needs the capability to function
+  src: >-
+    decisions/inbox/009-four-roots-structure.md (landed as PR #41); session 2026-09-23/24; user
+    messages 61-89 verbatim in tasks/082-user-notes.md

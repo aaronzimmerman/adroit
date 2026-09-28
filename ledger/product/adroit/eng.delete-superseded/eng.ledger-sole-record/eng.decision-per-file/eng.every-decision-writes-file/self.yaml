@@ -1,0 +1,21 @@
+id: eng:every-decision-writes-file
+decision: >-
+  Every decision made mid-cycle becomes a record in the same change that acts on it — the forks
+  asked of the user and the smaller calls decided along the way alike — carrying its why, its
+  source, what it rejected, and its place in the tree. Because every decision is a file, the
+  cycle's decision report is the ledger's diff; a wrap-up walks that diff rather than writing a
+  second account of what was decided.
+rejected:
+  - >-
+    recording only the decisions the user was asked about — the below-the-bar calls are the ones
+    nobody reverses while they are cheap, because nobody knows they were made
+  - >-
+    a prose wrap-up summary as the decision report — a second description of what was decided,
+    drifting from the records the moment either is edited
+links:
+  domain: eng
+context:
+  why: >-
+    stated in adroit's CLAUDE.md protocol ("every mid-cycle decision writes a file"; "the decision
+    report is git diff ledger/") with no record holding it
+  src: CLAUDE.md walk, adroit-ledger-upstream migration 2026-09-28

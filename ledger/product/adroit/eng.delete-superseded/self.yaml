@@ -1,0 +1,14 @@
+id: eng:delete-superseded
+decision: >-
+  A superseded decision is deleted from the ledger, never kept with a retired mark; git history is
+  the archive, and anything that hung under it is re-parented in the same change.
+rejected: []
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    a tombstone is noise every reader steps over, and a stale record still reads as live law — two
+    roster decisions kept describing a dropped access column long after it was gone
+  src: session 2026-09-19, user-directed
+  area: platform

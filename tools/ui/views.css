@@ -1,0 +1,199 @@
+/* adroit — the three WALKED views (hierarchy, capabilities, models).
+ *
+ * The galaxy is a picture of the whole corpus at once; these three are for walking it: a tree you
+ * open, a capability you read the contract of, and an ERD you drag around. They share the shell's
+ * palette (every colour here is one of ui.html's variables, so light and dark follow it) and they
+ * share ONE detail panel on the right — a record reads the same wherever you reached it from. */
+
+#views { flex: 1; min-height: 0; display: flex; }
+#views[hidden] { display: none; }
+
+/* The mode switcher owns the header: the scope tabs, the root chips and the galaxy's own search
+ * belong to the galaxy, so outside it they are not merely disabled, they are not there. `#stage`
+ * keeps its canvas alive behind the walked views (the simulation is paused, not discarded), so
+ * coming back to the galaxy returns to the same camera rather than a fresh layout. */
+body:not([data-mode="galaxy"]) #stage,
+body:not([data-mode="galaxy"]) #scope-tabs,
+body:not([data-mode="galaxy"]) #roots,
+body:not([data-mode="galaxy"]) #finder { display: none; }
+
+.vwrap { flex: 1; min-height: 0; display: flex; width: 100%; }
+.vmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.vdetail {
+  width: 400px; flex: none; border-left: 1px solid var(--line); background: var(--surface);
+  overflow-y: auto; padding: 16px 18px 40px;
+}
+@media (max-width: 1100px) { .vdetail { width: 320px; } }
+
+.vpane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.vsplit { flex-direction: row; }
+.vscroll { flex: 1; min-height: 0; overflow: auto; padding: 8px 0 40px; }
+
+/* ---- the bar above a view: its own search and its own counts ---- */
+.vbar {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+  border-bottom: 1px solid var(--line); flex: none;
+}
+.vbar input {
+  flex: 1; min-width: 120px; max-width: 460px; background: var(--paper);
+  border: 1px solid var(--line2); border-radius: 3px; color: var(--ink-text);
+  padding: 6px 11px; font: inherit; font-size: 14px;
+}
+.vbar input:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
+.vcount { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+.vbtn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted);
+  border: 1px solid var(--line2); border-radius: 3px; padding: 3px 9px; white-space: nowrap;
+}
+.vbtn:hover { color: var(--ink-text); border-color: var(--gold); }
+.vbtn.on { background: var(--sel); color: var(--sel-text); border-color: var(--sel); }
+
+/* ---- the capability overlay: a chip row that dims everything not leveraging it ---- */
+.vchips {
+  display: flex; gap: 5px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line);
+  align-items: center; flex: none;
+}
+.vchips .lbl { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--faint); margin-right: 3px; }
+.chip {
+  font-size: 12.5px; border: 1px solid var(--line2); border-radius: 3px; padding: 2px 9px;
+  color: var(--muted); background: var(--surface);
+}
+.chip:hover { color: var(--ink-text); border-color: var(--gold); }
+.chip.on { background: var(--sel); color: var(--sel-text); border-color: var(--sel); }
+.chip .n { font-family: 'IBM Plex Mono', monospace; font-size: 10px; opacity: .7; margin-left: 5px; }
+
+/* ---- the tree ---- */
+.tree { font-size: 14px; }
+.trow {
+  display: flex; align-items: baseline; gap: 7px; width: 100%; padding: 3px 14px 3px 0;
+  border-left: 2px solid transparent; line-height: 1.35;
+}
+.trow:hover { background: var(--surface2); }
+.trow.sel { background: var(--surface2); border-left-color: var(--gold); }
+.trow.dim { opacity: .3; }
+.trow.hit .tid { box-shadow: inset 0 -2px 0 var(--gold); }
+.tcaret {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--faint); width: 12px;
+  flex: none; text-align: center;
+}
+.tid { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 500; flex: none; }
+.tgist { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--faint); flex: none; margin-left: auto; }
+.trow.group { font-weight: 600; padding-top: 6px; padding-bottom: 6px; }
+.trow.group .tid { font-family: Fraunces, Georgia, serif; font-size: 15px; font-weight: 600; }
+.trow.root .tid { font-size: 17px; }
+.trow.root { border-top: 1px solid var(--line); margin-top: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+.capb {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .06em; border: 1px solid var(--violet); color: var(--violet);
+  border-radius: 3px; padding: 0 4px; flex: none;
+}
+.capb.on { background: var(--violet); color: var(--paper); }
+
+/* ---- the capability list ---- */
+.vlist { width: 230px; flex: none; border-right: 1px solid var(--line); overflow-y: auto; padding: 6px 0 40px; }
+.clrow { display: block; width: 100%; padding: 7px 14px; border-left: 2px solid transparent; }
+.clrow:hover { background: var(--surface2); }
+.clrow.sel { background: var(--surface2); border-left-color: var(--gold); }
+.clrow .nm { font-weight: 600; font-size: 14px; }
+.clrow .sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--faint); }
+
+/* ---- the contract card: the interface consumers buy into, given the page's first weight ---- */
+.contract { border: 1px solid var(--line2); border-radius: 4px; background: var(--surface); margin: 14px 16px; }
+.contract .ctop { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.contract h2 { font-family: Fraunces, Georgia, serif; font-size: 24px; margin: 0 0 4px; font-weight: 600; }
+.contract .purpose { font-size: 15.5px; color: var(--ink-text); }
+.contract .cgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.contract section { padding: 12px 18px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); }
+.contract h3 {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--faint); margin: 0 0 6px; font-weight: 500;
+}
+.contract ul { margin: 0; padding-left: 16px; font-size: 13.5px; }
+.contract li { margin-bottom: 5px; }
+.contract .none { color: var(--faint); font-size: 13px; font-style: italic; }
+.strip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; }
+.strip .lbl { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--faint); }
+
+.vsec { padding: 6px 18px 2px; }
+.vsec h3 {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--faint); margin: 16px 0 6px; font-weight: 500;
+}
+.consumer { display: block; width: 100%; padding: 4px 0 4px 8px; border-left: 2px solid transparent; }
+.consumer:hover { background: var(--surface2); border-left-color: var(--gold); }
+.consumer .via { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.consumer .ty { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--faint); text-transform: uppercase; }
+.consumer .st { display: block; font-size: 12.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctree { font-family: Fraunces, Georgia, serif; font-size: 15px; font-weight: 600; margin-top: 10px; }
+
+/* ---- the ERD ---- */
+.erd { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--paper); cursor: grab; }
+.erd.panning { cursor: grabbing; }
+/* The lines live INSIDE the transformed plane with the boxes, so one transform moves both and an
+ * edge can never drift off the box it joins. */
+.erd .plane { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.erd .plane > svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+.ebox {
+  position: absolute; width: 232px; background: var(--surface); border: 1px solid var(--line2);
+  border-radius: 4px; box-shadow: var(--shadow); font-size: 12.5px; overflow: hidden;
+}
+.ebox.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-soft); }
+.ebox .eh {
+  padding: 6px 9px; background: var(--violet-soft); border-bottom: 1px solid var(--line2);
+  cursor: grab; display: flex; align-items: baseline; gap: 6px;
+}
+.ebox.view .eh { background: var(--gold-soft); }
+.ebox .en { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ebox .ek {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted); margin-left: auto; flex: none;
+}
+.ebox .eb { max-height: 236px; overflow-y: auto; }
+.ebox .et {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--faint); padding: 4px 9px 2px; background: var(--surface2);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0;
+}
+.ebox .et.gone { color: var(--amber); }
+.ebox .ef { display: flex; gap: 6px; padding: 1px 9px; align-items: baseline; }
+.ebox .ef:hover { background: var(--surface2); }
+.ebox .ef .fn { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.ebox .ef .fn.pk { color: var(--gold); font-weight: 500; }
+.ebox .ef .ft { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
+  color: var(--faint); white-space: nowrap; }
+.ebox .ef .fq { color: var(--faint); font-size: 10px; }
+.ebox .ee { padding: 6px 9px; color: var(--faint); font-style: italic; font-size: 12px; }
+.ebox .efoot {
+  padding: 4px 9px; border-top: 1px solid var(--line); background: var(--surface2);
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--muted);
+  display: flex; gap: 5px; flex-wrap: wrap;
+}
+
+/* ---- the shared detail panel ---- */
+.vdetail .dtop { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.vdetail h2 { font-family: Fraunces, Georgia, serif; font-size: 19px; margin: 0 0 2px; font-weight: 600; }
+.vdetail .crumb { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--faint);
+  margin-bottom: 10px; word-break: break-all; }
+.vdetail .stmt { font-size: 15px; margin-bottom: 12px; }
+.vdetail h3 {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--faint); margin: 14px 0 5px; font-weight: 500;
+}
+.vdetail ul { margin: 0; padding-left: 16px; font-size: 13.5px; }
+.vdetail li { margin-bottom: 4px; }
+.vdetail .why { font-size: 13px; color: var(--muted); }
+.vdetail .empty { color: var(--faint); font-size: 13.5px; padding-top: 30px; text-align: center; }
+.vdetail .lnk {
+  display: block; width: 100%; padding: 3px 0 3px 7px; border-left: 2px solid transparent; font-size: 13px;
+}
+.vdetail .lnk:hover { background: var(--surface2); border-left-color: var(--gold); }
+.vdetail .lnk .ty { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--faint);
+  text-transform: uppercase; margin-right: 5px; }
+.vdetail .lnk .id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.vdetail .lnk .st { display: block; color: var(--muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

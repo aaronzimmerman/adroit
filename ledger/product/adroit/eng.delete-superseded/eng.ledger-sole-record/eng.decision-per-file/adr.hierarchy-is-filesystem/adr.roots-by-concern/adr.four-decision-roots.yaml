@@ -1,0 +1,22 @@
+id: adr:four-decision-roots
+decision: >-
+  A ledger directory holds exactly four decision roots — product, capabilities, models,
+  engineering — beside the domains registry, and nothing else (usage telemetry lives outside the
+  ledger directory — eng:log-ledger-interactions). A
+  project's rulings about its own ledger practice are engineering records; the methodology's own
+  decisions are never a root of an adopting project's ledger.
+rejected:
+  - >-
+    a fifth root in each project for the methodology's corpus — it made every adopter carry a copy
+    of adroit's decisions and left adroit governing someone else's ledger instead of its own
+  - >-
+    tolerating extra directories the tooling skips — a record filed there passes the check
+    unexamined
+links:
+  domain: adr
+context:
+  why: >-
+    user-directed 2026-09-28, the user's own example of a structural refinement ("there are four
+    directories in the ledger directory"); the StageDoor ledger dropped its adroit/ root the same
+    day and its check now fails a stray directory
+  src: user ruling 2026-09-28; adroit-ledger-upstream migration; interactions-local-log 2026-09-28

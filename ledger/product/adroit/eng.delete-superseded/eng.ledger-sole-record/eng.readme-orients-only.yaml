@@ -1,0 +1,22 @@
+id: eng:readme-orients-only
+decision: >-
+  A README orients and instructs: what a thing is, how to run it, how to test it. It never restates
+  a decision — it points at the ledger for that, and says outright that the ledger wins if the two
+  disagree. A doc that starts explaining WHY the system behaves as it does has become the second
+  description we deleted the specification to avoid.
+rejected: []
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    the guide for agents had quietly grown its own copy of the stack, the testing rules and the git
+    workflow, and every copy was wrong — it named a container-based test database the suite stopped
+    using and called frontend tests optional after they became expected. Nobody edits the copy they
+    are not reading, so a duplicated rule is a rule with a stale half.
+  src: session 2026-09-21 (user-directed)
+  area: platform
+  demoted: >-
+    grounded on principle:single-resolver while this corpus lived in StageDoor's ledger; that principle stayed
+    downstream when the corpus moved upstream (2026-09-28), so the edge demoted to this note
+    (adr:references-flow-one-way — a relationship the direction forbids demotes to context)

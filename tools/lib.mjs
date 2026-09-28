@@ -1,0 +1,1980 @@
+// adroit — the ledger's ONE loader, validator and graph builder (eng:decision-per-file).
+//
+// EXTRACTED 2026-09-28 from the StageDoor reference implementation (tools/adroit/ in
+// ~/workspace/magic-beans), paths adjusted to run against THIS repository's ledger/. The StageDoor
+// copy is still the one its CI runs; the two are not yet deduplicated. Instance-specific reach-ins
+// (decisions/review.json, the @DecisionRef scan of beans/src/test, schema.json for the ERD) are
+// kept as-is and simply find nothing here.
+//
+// The canonical store is `ledger/` at the repo root: the FOUR-ROOTS TREE (inbox 009). One YAML
+// file per decision, and the refinement hierarchy IS the filesystem — a decision with children is
+// a folder holding its own `self.yaml` plus those children, so re-parenting is a `git mv` and the
+// links block never restates what the path already says. The four decision roots:
+//
+//   engineering/           universally citable by everything
+//   capabilities/<name>/   self-contained trees, each publishing a `contract.yaml` ARTIFACT
+//   models/                the data at rest, plus the flat read contracts (views) beside it
+//   product/<app>/         one tree per app, its story root at `self.yaml`
+//
+// The interaction events (eng:log-ledger-interactions) are NOT in the store: they are usage
+// telemetry, appended to a machine-local log outside any repository
+// (`~/.adroit/<corpus>/interactions.jsonl`), read beside the store and validated line by line on
+// read — a bad line is reported and skipped, never a corpus error.
+//
+// Adroit's OWN decisions (the methodology this store is an instance of) live upstream in the
+// adroit repository's ledger since 2026-09-28 (eng:methodology-lives-upstream); an upstream id in
+// prose is a citation, never a link, and no local record may name one in its links.
+//
+// The loader also still reads the RETIRED flat JSON store (`ledger/<id>.json` +
+// `ledger/modules/<name>.json`), because `--diff` compares the working tree against git refs that
+// predate the swap. Both formats go through ONE parser and produce ONE store shape; the format is
+// detected per ENTRY (by extension and path shape), never per invocation, so a ref from either
+// side of the swap loads by the same rules.
+//
+// Deliberate call: no index, no SQLite, no cache. 546 small files parse in a few milliseconds, so
+// the graph is rebuilt per request. A materialized index would be a second copy to keep in step —
+// the exact thing derive-dont-materialize forbids without a measured need.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { parse as parseYaml } from './yaml.mjs';
+
+export const ROOT = path.resolve(import.meta.dirname, '..');
+// ADROIT_LEDGER_DIR points the whole tool at another store — the server's `--dir` for everything
+// that does not go through the server (tests, a frozen snapshot, a second checkout).
+export const LEDGER_DIR = process.env.ADROIT_LEDGER_DIR
+  ? path.resolve(process.env.ADROIT_LEDGER_DIR)
+  : path.join(ROOT, 'ledger');
+export const MODULES_DIR = path.join(LEDGER_DIR, 'modules');
+
+/** A record with children is a folder; this is the file the folder itself stands for. */
+export const SELF = 'self.yaml';
+/** A capability's published interface. An ARTIFACT, not a decision (inbox 009, ruling 14) —
+ *  adherence to it lives in the CONSUMING decision, never in a declaration of its own. */
+export const CONTRACT = 'contract.yaml';
+export const CONTRACT_KEYS = ['capability', 'purpose', 'inputs', 'outputs', 'models', 'uses'];
+/** The roots. `capabilities/` and `product/` hold one tree per name; the rest are one tree each. */
+export const TREE_ROOTS = ['capabilities', 'engineering', 'models', 'product'];
+/** Everything else a store directory may hold besides the roots: the retired JSON store's module
+ *  folder (still read so `--diff` works across the four-roots swap). Any OTHER directory is a
+ *  stray root — its records would be invisible to every rule, so it is an error rather than
+ *  something the loader silently skips. That includes a reappearing `interactions/`: the event log
+ *  left the corpus for a machine-local file (eng:log-ledger-interactions). */
+export const NON_TREE_DIRS = ['modules'];
+/** The directory the interaction events used to live in, named so the stray-root error can say
+ *  where they went instead of only that the directory is wrong. */
+export const RETIRED_INTERACTIONS_DIR = 'interactions';
+/** The tree a path inside the store belongs to — the directory, so there is one string to reason
+ *  about and no second mapping from a record to its home. */
+export const treeOfPath = (rel) => {
+  const p = rel.split('/');
+  return (p[0] === 'capabilities' || p[0] === 'product') && p.length > 1 ? `${p[0]}/${p[1]}` : p[0];
+};
+/** The CLOUD a tree draws as: a capability's or an app's own name, else the root's. */
+export const cloudOfTree = (tree) => (tree.includes('/') ? tree.slice(tree.indexOf('/') + 1) : tree);
+export const capabilityOfTree = (tree) =>
+  (tree.startsWith('capabilities/') ? tree.slice('capabilities/'.length) : null);
+
+/** The three moments worth recording (eng:log-ledger-interactions). Routine citations are never logged. */
+export const INTERACTION_KINDS = ['resolved-fork', 'prevented', 'gap'];
+/** A note is a tally pointer, not a diary (eng:log-ledger-interactions). */
+export const INTERACTION_NOTE_CAP = 200;
+
+/** eng:namespace-names-kind: an id's namespace names its KIND and is LOOKED UP, never inferred from shape.
+ *  These are the graph-level kinds — records any record may cite without an export, because
+ *  being cited from everywhere is the whole point of them. The list is ledger content; a new
+ *  namespace must be a declared module or one of these before records may use it. */
+export const RESERVED_KINDS = ['principle', 'story', 'model', 'view'];
+
+/** The DOMAIN namespaces — `eng:`, `srch:`, `aud:` … — are declared in the ledger itself, in
+ *  `domains.yaml` at the store's root: each domain with the one line that says what it covers.
+ *  A domain-namespaced id is an ordinary decision (kind `decision`); the domain names which part
+ *  of the system it governs, never where it lives — the path says that. */
+export const DOMAINS_FILE = 'domains.yaml';
+/** The one key of `domains.yaml` that is not a domain: the corpus's stable name, which keys its
+ *  machine-local interaction log. Absent, the name falls back to the repository directory's —
+ *  which a second worktree does not share, hence the declaration. */
+export const CORPUS_KEY = 'corpus';
+
+/** The id rule (eng:namespace-names-kind): `<namespace>:<slug>`, the slug a few kebab-case words
+ *  naming the decision's substance. Numbered ids (`AUD-D14`, `email:D1`) retired 2026-09-25;
+ *  `tools/adroit/id-map.json` translates them, which is what reading any older history needs. */
+export const ID_SHAPE = /^[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Fields the record schema dropped (eng:decision-per-file, 2026-09-28). The check REFUSES them
+ *  rather than ignoring them, so a record written from an old template fails loudly. */
+export const RETIRED_FIELDS = ['status', 'tokens', 'api'];
+
+export const namespaceOf = (id) => (id.includes(':') ? id.slice(0, id.indexOf(':')) : null);
+export const isReservedKind = (id) => RESERVED_KINDS.includes(namespaceOf(id));
+export const kindOf = (id) => (isReservedKind(id) ? namespaceOf(id) : 'decision');
+export const isPrinciple = (id) => namespaceOf(id) === 'principle';
+
+/** A record is CAPABILITY-SCOPED when its namespace names a capability tree — `email:declared-mail-only` is a
+ *  record of the email capability. This is a lookup against the trees that exist, not a test on
+ *  the id's shape: the shape heuristic broke the day a second kind of namespaced id existed
+ *  (eng:namespace-names-kind). (Its old name survives because every caller asks the same question of it.) */
+export const isModuleScoped = (id, moduleByName) => {
+  const ns = namespaceOf(id);
+  return Boolean(ns) && moduleByName?.get?.(ns)?.kind === 'capability';
+};
+
+/** The GROUP a record belongs to — its tree, derived from the path it lives at. A store loaded
+ *  from the retired JSON format has no path to derive from, so it falls back to the module the
+ *  record declared; both answers are the same kind of thing (a cloud name), which is what lets
+ *  `--diff` compare a tree working copy against a pre-swap ref. */
+export const moduleOf = (rec) =>
+  rec._cloud ?? rec.links?.module ?? (isPrinciple(rec.id) ? 'principles' : undefined);
+
+/** A model's owner, in the retired module store (`links.owner`). Kept for the JSON side of a diff;
+ *  in the tree the models root owns every model and the field is vestigial data, not wiring. */
+export const ownerOf = (rec) => rec.links?.owner;
+
+/** The cloud a record draws inside. One resolver; every caller uses this. */
+export const cloudOf = (rec) => moduleOf(rec) ?? ownerOf(rec);
+
+/** The tree a record lives in, as the direction rule names it (`product/hq`, `capabilities/email`,
+ *  `engineering`, `models`). Absent on a JSON-format record, which has no path. */
+export const treeOf = (rec) => rec._tree;
+
+/** Every typed outbound edge of a record as [type, target] — the one place the traversal
+ *  vocabulary is enumerated, so "what counts as a reference" has a single answer. A tension
+ *  names a principle and never a model, so it is not a reference edge. */
+export const outboundEdges = (rec) => [
+  // `[].concat` because this also runs over records the shape rules have already rejected: a
+  // malformed link must produce one clear shape error, never a crash inside a later rule.
+  ...(typeof rec.links?.refines === 'string' ? [['refines', rec.links.refines]] : []),
+  ...[].concat(rec.links?.grounds ?? []).map((t) => ['grounds', t]),
+  ...[].concat(rec.links?.consumes ?? []).map((t) => ['consumes', t]),
+].filter(([, t]) => typeof t === 'string');
+
+export const domainsOf = (rec) => [].concat(rec.links?.domain ?? []);
+export const groundsOf = (rec) => rec.links?.grounds ?? [];
+export const consumesOf = (rec) => rec.links?.consumes ?? [];
+export const tensionsOf = (rec) => [].concat(rec.links?.tension ?? []);
+/** A tension names a principle slug; the edge it stands for points at that principle record. */
+export const tensionTarget = (slug) => (slug.startsWith('principle:') ? slug : `principle:${slug}`);
+
+export const truncate = (s, n = 110) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+/** file-safe stem for an id: `email:declared-mail-only` → `email.declared-mail-only`. The stem IS the id's claim on a file. */
+export const stemFor = (id) => id.replaceAll(':', '.');
+/** The record's file name in the live tree store. */
+export const yamlNameFor = (id) => `${stemFor(id)}.yaml`;
+/** …and in the retired flat JSON store, which `--diff` still reads out of git history. */
+export const fileNameFor = (id) => `${stemFor(id)}.json`;
+
+const readJson = (file) => {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    throw new Error(`${path.relative(ROOT, file)}: ${e.message}`);
+  }
+};
+
+/** A tree's colour. Small fixed palette, assigned by position in the sorted name list so a cloud
+ *  keeps its colour as long as the set of trees does — the accent used to be declared in a module
+ *  file, and with those retired it is derived like everything else. */
+export const TREE_ACCENT = { engineering: '#A8841C', models: '#7C5CD6' };
+const CAPABILITY_ACCENTS = ['#8B8FA3', '#B45309', '#0D9488', '#9333EA', '#059669',
+  '#BE365E', '#0284C7', '#64748B', '#C2410C', '#4F46E5'];
+const PRODUCT_ACCENTS = ['#7C5CD6', '#B45309', '#0284C7', '#0D9488', '#64748B'];
+/** Layer is what the explorer splits its two graphs on: "P" applies to everything. */
+const TREE_LAYER = { engineering: 'P', models: '0' };
+const TREE_PURPOSE = {
+  engineering: 'How the project is built — the rules every other tree is subject to.',
+  models: 'The data at rest, and the flat read contracts (views) derived over it.',
+};
+
+/** The trees, as the explorer's clouds. Derived from the paths the records live at plus the
+ *  contracts on disk — there is no declaration file left to drift from the filesystem. */
+function synthesizeTrees(records, contracts) {
+  const trees = new Map();
+  for (const rec of records) if (rec._tree) trees.set(rec._tree, (trees.get(rec._tree) ?? 0) + 1);
+  // A capability whose tree holds no record yet still exists if it published a contract; showing
+  // it is what lets the contract rule report the mismatch instead of silently skipping it.
+  for (const name of contracts.keys()) trees.set(`capabilities/${name}`, trees.get(`capabilities/${name}`) ?? 0);
+
+  const sorted = [...trees.keys()].sort();
+  const nth = (t, prefix) => sorted.filter((x) => x.startsWith(prefix)).indexOf(t);
+  return sorted.map((tree) => {
+    const cap = capabilityOfTree(tree);
+    const app = tree.startsWith('product/') ? tree.slice('product/'.length) : null;
+    const kind = cap ? 'capability' : app ? 'product' : tree;
+    return {
+      name: cloudOfTree(tree), tree, kind,
+      layer: cap ? '0' : app ? '' : (TREE_LAYER[tree] ?? ''),
+      accent: cap ? CAPABILITY_ACCENTS[nth(tree, 'capabilities/') % CAPABILITY_ACCENTS.length]
+        : app ? PRODUCT_ACCENTS[nth(tree, 'product/') % PRODUCT_ACCENTS.length]
+          : (TREE_ACCENT[tree] ?? null),
+      purpose: cap ? (contracts.get(cap)?.purpose ?? null)
+        : app ? `The ${app} app: everything story:${app} refines into.`
+          : (TREE_PURPOSE[tree] ?? null),
+    };
+  });
+}
+
+/** THE parser. Both sides of every read hand it the same entries — the working tree from disk,
+ *  a git ref from `git cat-file` — so a store loaded from history and a store loaded from disk
+ *  can never be parsed by two different sets of rules (which is the whole point of diffing them).
+ *
+ *  Both FORMATS go through it too, discriminated per entry: `.yaml` is the live tree, `.json` the
+ *  retired flat store that `--diff` still meets in git history. */
+export function buildStore(entries) {
+  const records = [], modules = [], tree = [];
+  const contracts = new Map();
+  let domains = new Map(), domainsRaw;
+  const parse = (entry, how) => {
+    try {
+      return how(entry.content);
+    } catch (e) {
+      throw new Error(`${entry.path}: ${e.message}`);
+    }
+  };
+  for (const entry of [...entries].sort((a, b) => a.path.localeCompare(b.path))) {
+    if (entry.kind === 'module') modules.push({ ...parse(entry, JSON.parse), _file: entry.path });
+    else if (entry.kind === 'decision') records.push({ ...parse(entry, JSON.parse), _file: entry.path });
+    else if (entry.kind === 'record') tree.push({ entry, rec: parse(entry, parseYaml) });
+    else if (entry.kind === 'contract') {
+      contracts.set(path.posix.basename(path.posix.dirname(entry.rel)), parse(entry, parseYaml));
+    } else if (entry.kind === 'domains') {
+      // Kept raw beside the Map so validate can say what is wrong with a malformed declaration
+      // instead of the loader guessing at it.
+      domainsRaw = parse(entry, parseYaml);
+      if (domainsRaw && typeof domainsRaw === 'object' && !Array.isArray(domainsRaw)) {
+        domains = new Map(Object.entries(domainsRaw).filter(([k]) => k !== CORPUS_KEY));
+      }
+    }
+  }
+
+  // THE PATH CARRIES THE EDGE. A record inside `<parent>/` refines that parent, so the nested file
+  // never restates it; the loader puts it back, which is the whole reason a re-parent is a git mv.
+  const idAt = new Map(tree.map(({ entry, rec }) => [entry.rel, rec?.id]));
+  for (const { entry, rec: raw } of tree) {
+    const rec = { ...raw };
+    const base = path.posix.basename(entry.rel), dir = path.posix.dirname(entry.rel);
+    const container = base === SELF ? path.posix.dirname(dir) : dir;
+    const parent = container === '.' ? undefined : idAt.get(`${container}/${SELF}`);
+    rec._file = entry.path;
+    rec._rel = entry.rel;
+    rec._tree = treeOfPath(entry.rel);
+    rec._cloud = cloudOfTree(rec._tree);
+    if (parent !== undefined) rec._nestedUnder = parent;
+    if (parent !== undefined && rec.links && typeof rec.links === 'object' && !Array.isArray(rec.links)) {
+      if (rec.links.refines === undefined) rec.links = { ...rec.links, refines: parent };
+      else rec._restatedRefines = true;  // the file says what the path already says — validate objects
+    }
+    records.push(rec);
+  }
+
+  const synthesized = tree.length || contracts.size ? synthesizeTrees(records, contracts) : [];
+  const allModules = [...modules, ...synthesized];
+  return {
+    // The interaction events are not part of the store (eng:log-ledger-interactions); loadLedger
+    // attaches the machine-local log's valid events here, so every consumer reads one array.
+    records, modules: allModules, interactions: [], contracts, domains, domainsRaw,
+    format: tree.length || contracts.size ? 'tree' : 'json',
+    byId: new Map(records.map((r) => [r.id, r])),
+    moduleByName: new Map(allModules.map((m) => [m.name, m])),
+    review: null,
+  };
+}
+
+/** Which kind of entry a path inside the store is. The discriminator is the SHAPE of the path, so
+ *  one function answers for both formats and neither loader has to know which it is reading.
+ *  Unknown files are ignored, not guessed at. `relPath` is relative to the repo, `dir` names the
+ *  store directory inside it. */
+export function entryKind(relPath, dir = 'ledger') {
+  const rel = relPath.startsWith(`${dir}/`) ? relPath.slice(dir.length + 1) : null;
+  if (rel === null) return null;
+  const parts = rel.split('/');
+  if (rel === DOMAINS_FILE) return 'domains';
+  if (rel.endsWith('.yaml')) return parts[parts.length - 1] === CONTRACT ? 'contract' : 'record';
+  if (parts.length === 1 && rel.endsWith('.json')) return 'decision';
+  if (parts.length === 2 && parts[0] === 'modules' && rel.endsWith('.json')) return 'module';
+  return null;
+}
+
+/** Load the whole store from the working tree. Each record carries `_file` (repo-relative) and,
+ *  in the tree format, `_rel` / `_tree` / `_cloud` — where it sits, which is what says what it
+ *  refines and which tree's rules bind it. */
+export function loadLedger({ dir = LEDGER_DIR } = {}) {
+  const entries = [];
+  const add = (file, kind) => entries.push({
+    kind, name: path.basename(file), path: path.relative(ROOT, file),
+    rel: path.relative(dir, file).split(path.sep).join('/'), content: fs.readFileSync(file, 'utf8'),
+  });
+  const sweep = (d, kind, ext) => {
+    if (!fs.existsSync(d)) return;
+    for (const name of fs.readdirSync(d).sort()) if (name.endsWith(ext)) add(path.join(d, name), kind);
+  };
+  // The tree: every .yaml under a root, however deep the refinement hierarchy runs.
+  const walk = (d) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.name === CONTRACT) add(full, 'contract');
+      else if (e.name.endsWith('.yaml')) add(full, 'record');
+    }
+  };
+  for (const root of TREE_ROOTS) walk(path.join(dir, root));
+  const strayRoots = fs.existsSync(dir)
+    ? fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !TREE_ROOTS.includes(e.name) && !NON_TREE_DIRS.includes(e.name))
+      .map((e) => e.name).sort()
+    : [];
+  if (fs.existsSync(path.join(dir, DOMAINS_FILE))) add(path.join(dir, DOMAINS_FILE), 'domains');
+  sweep(dir, 'decision', '.json');                       // the retired flat store, still readable
+  sweep(path.join(dir, 'modules'), 'module', '.json');
+
+  const store = buildStore(entries);
+  store.strayRoots = strayRoots;
+  store.corpus = corpusNameOf(store, dir);
+  store.interactionLog = readInteractionLog(store.corpus);
+  store.interactions = store.interactionLog.events;
+
+  const reviewPath = path.join(ROOT, 'decisions/review.json');
+  if (fs.existsSync(reviewPath)) {
+    const r = readJson(reviewPath);
+    const live = (id) => store.byId.has(id);
+    store.review = {
+      contradictions: (r.contradictions || []).map((c) => ({ ...c, ids: c.ids.filter(live) })).filter((c) => c.ids.length),
+      stale: (r.stale || []).filter((s) => live(s.id)),
+      raiseDetail: (r.raiseDetail || []).filter((s) => live(s.id)),
+      heldRewrites: Object.fromEntries(Object.entries(r.heldRewrites || {}).filter(([id]) => live(id))),
+      codeGaps: (r.codeGaps || []).filter((g) => live(g.id)),
+    };
+  }
+  return store;
+}
+
+/** Load the store as it stood at a git ref. One `ls-tree` + one batched `cat-file`, then the
+ *  same parser the working tree goes through. Throws on a git failure (a bad ref is an error,
+ *  not an empty diff); a ref with no ledger/ directory yields an empty store, which is correct. */
+export function loadLedgerAtRef(ref, { cwd = ROOT, dir = 'ledger' } = {}) {
+  const run = (args, input) =>
+    execFileSync('git', args, { cwd, input, encoding: input === undefined ? 'utf8' : undefined, maxBuffer: 512 * 1024 * 1024 });
+  const listing = run(['ls-tree', '-r', '-z', ref, '--', dir]).split('\0').filter(Boolean);
+  const wanted = [];
+  for (const row of listing) {
+    const [meta, relPath] = row.split('\t');
+    const [, type, sha] = meta.split(/\s+/);
+    if (type !== 'blob') continue;
+    const kind = entryKind(relPath, dir);
+    if (kind) {
+      wanted.push({ kind, sha, path: relPath, rel: relPath.slice(dir.length + 1), name: path.basename(relPath) });
+    }
+  }
+  if (!wanted.length) return buildStore([]);
+
+  // One `cat-file --batch` for every blob: <sha> <type> <size>\n<bytes>\n, repeated.
+  const out = run(['cat-file', '--batch'], wanted.map((w) => w.sha).join('\n') + '\n');
+  const bySha = new Map();
+  for (let pos = 0; pos < out.length;) {
+    const nl = out.indexOf(0x0a, pos);
+    if (nl === -1) break;
+    const [sha, type, size] = out.subarray(pos, nl).toString('utf8').split(' ');
+    if (type !== 'blob') { pos = nl + 1; continue; } // "<sha> missing"
+    const start = nl + 1;
+    bySha.set(sha, out.subarray(start, start + Number(size)).toString('utf8'));
+    pos = start + Number(size) + 1;
+  }
+  return buildStore(wanted.map((w) => ({ ...w, content: bySha.get(w.sha) ?? '' })));
+}
+
+// ---------------------------------------------------------------------------
+// The interaction log — usage telemetry, machine-local (eng:log-ledger-interactions)
+// ---------------------------------------------------------------------------
+
+/** The corpus's stable name: `corpus:` in domains.yaml, else the repository directory's name. */
+export function corpusNameOf(store, dir = LEDGER_DIR) {
+  const declared = store.domainsRaw && typeof store.domainsRaw === 'object' ? store.domainsRaw[CORPUS_KEY] : undefined;
+  return typeof declared === 'string' && declared.trim() ? declared.trim() : path.basename(path.dirname(path.resolve(dir)));
+}
+
+/** Where the logs live. ADROIT_HOME moves them (tests, a second machine profile); read per call,
+ *  so a process that sets it before loading sees it. */
+export const adroitHome = () =>
+  (process.env.ADROIT_HOME ? path.resolve(process.env.ADROIT_HOME) : path.join(os.homedir(), '.adroit'));
+export const interactionLogPath = (corpus) => path.join(adroitHome(), corpus, 'interactions.jsonl');
+
+/** What is wrong with one event, as sentences — empty when nothing is. The schema of
+ *  eng:log-ledger-interactions: ts, src, decisions, kind, note (capped), where. Which ids an event
+ *  names is NOT checked: an event may cite a decision that lives in another corpus (the
+ *  methodology's, upstream), and a tally that names nothing here simply lands on no local record. */
+export function eventProblems(e) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return ['an event must be a JSON object'];
+  const out = [];
+  if (typeof e.ts !== 'number' || !Number.isFinite(e.ts)) out.push('ts must be epoch millis');
+  for (const k of ['src', 'note', 'where']) {
+    if (typeof e[k] !== 'string' || !e[k].trim()) out.push(`${k} must be a non-empty string`);
+  }
+  if (typeof e.note === 'string' && e.note.length > INTERACTION_NOTE_CAP) {
+    out.push(`note is ${e.note.length} chars (cap ${INTERACTION_NOTE_CAP}) — events are tallies, not diaries`);
+  }
+  if (!INTERACTION_KINDS.includes(e.kind)) out.push(`kind '${e.kind}' is not one of ${INTERACTION_KINDS.join(' | ')}`);
+  if (!isStrArray(e.decisions)) out.push('decisions must be an array of decision ids');
+  // A gap is precisely the event with no decision to name; anything else must name the one that did the work.
+  else if (!e.decisions.length && e.kind !== 'gap') out.push(`a '${e.kind}' event must name the decision that did the work`);
+  return out;
+}
+
+/** Validation ON READ: every well-formed line is an event, every other line is reported with its
+ *  number and skipped. A bad line never fails the corpus — the log is not the corpus. */
+export function parseInteractionLog(text) {
+  const events = [], bad = [];
+  text.split('\n').forEach((line, i) => {
+    if (!line.trim()) return;
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch (err) {
+      bad.push({ line: i + 1, problems: [`bad JSON: ${err.message}`] });
+      return;
+    }
+    const problems = eventProblems(e);
+    if (problems.length) bad.push({ line: i + 1, problems });
+    else events.push({ ...e, _line: i + 1 });
+  });
+  return { events, bad };
+}
+
+/** The corpus's log, or an empty one when this machine has none — absence is a state, not an error. */
+export function readInteractionLog(corpus) {
+  const file = interactionLogPath(corpus);
+  if (!fs.existsSync(file)) return { corpus, file, present: false, events: [], bad: [] };
+  return { corpus, file, present: true, ...parseInteractionLog(fs.readFileSync(file, 'utf8')) };
+}
+
+/** The log's standing, for a renderer: where it is, whether it exists, and what was skipped. */
+export const interactionLogSummary = ({ interactionLog: l } = {}) => (l
+  ? { corpus: l.corpus, file: l.file, present: l.present, events: l.events.length, bad: l.bad }
+  : { corpus: null, file: null, present: false, events: 0, bad: [] });
+
+/** Events → { byDecision: Map<id, events[]>, gaps: events[] }, newest first. Derived on read:
+ *  no count is ever stored on a decision, so nothing can drift out of step with the log. */
+export function interactionIndex({ interactions = [] } = {}) {
+  const newestFirst = [...interactions].sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+  const byDecision = new Map();
+  for (const e of newestFirst) {
+    for (const id of e.decisions ?? []) byDecision.set(id, [...(byDecision.get(id) ?? []), e]);
+  }
+  return { byDecision, gaps: newestFirst.filter((e) => e.kind === 'gap'), events: newestFirst };
+}
+
+// ---------------------------------------------------------------------------
+// The model layer
+// ---------------------------------------------------------------------------
+
+/** The model layer's wiring, derived in one place: the models and views, and which OTHER trees
+ *  reach each of them through a record edge.
+ *
+ *  RETIRED with the module files: `exports` / `imports` and everything built on them. A model is
+ *  now a flat contract in the `models/` root, citable by name from any tree by construction —
+ *  there is no public/private axis left to declare, so the only fact worth deriving is who
+ *  actually reaches it. Declaration and traffic can no longer disagree, because there is only
+ *  traffic. (The direction check is what a reach is now measured against.) */
+export function modelIndex({ records = [], byId = new Map() } = {}) {
+  const models = records.filter((r) => kindOf(r.id) === 'model' || kindOf(r.id) === 'view');
+  const owner = new Map(models.map((m) => [m.id, cloudOf(m)]));
+
+  // A reference is a record edge that leaves its own tree and lands on a model.
+  const refs = [];
+  for (const rec of records) {
+    const from = cloudOf(rec);
+    if (!from) continue;
+    for (const [type, target] of outboundEdges(rec)) {
+      const k = kindOf(target);
+      if ((k !== 'model' && k !== 'view') || !byId.has(target)) continue;
+      if (owner.get(target) === from) continue;
+      refs.push({ from, model: target, via: rec.id, type });
+    }
+  }
+  const referencedBy = new Map();
+  for (const r of refs) {
+    const seen = referencedBy.get(r.model) ?? new Set();
+    seen.add(r.from);
+    referencedBy.set(r.model, seen);
+  }
+
+  /** Who depends on this model: every tree whose records reach it. Derived on read, from the
+   *  edges alone — the same shape Tool.java's data edges take. */
+  const importersOf = (id) => [...(referencedBy.get(id) ?? [])].filter((m) => m !== owner.get(id)).sort();
+
+  return { models, owner, referencedBy, refs, importersOf };
+}
+
+/** The tables a model stands for — the ONE hand-maintained edge between the decision layer and
+ *  the real schema, and the only thing about the model layer that is not derivable. Read from the
+ *  record's own `tables:` when it declares one, else from `context.tables`, which is where the
+ *  corpus has carried the mapping since the models root was minted. Two spellings, one lookup, so
+ *  no reader has to know which a given record uses.
+ *
+ *  A view maps to NO tables by construction: it is a read contract derived over models, so its
+ *  fields are the derivations its own statement declares. */
+export const tablesOf = (rec) =>
+  [].concat(rec?.tables ?? rec?.context?.tables ?? []).filter((t) => typeof t === 'string' && t.trim());
+
+/** The derivations a view DECLARES, read off its statement: a capitalised name introduced with an
+ *  em dash (`CLAIMED — the owning company has a live member`). The convention is the corpus's own
+ *  and the pattern is deliberately narrow — a view that does not write its fields this way shows
+ *  none rather than a guess at them. */
+export const declaredDerivations = (rec) =>
+  [...new Set([...(rec?.decision ?? '').matchAll(/\b([A-Z][A-Z-]{2,})\s+—/g)].map((m) => m[1]))];
+
+// ---------------------------------------------------------------------------
+// Root stories — WHICH PRODUCT a record ultimately serves
+// ---------------------------------------------------------------------------
+
+/** The modules that serve every product rather than one of them. A module declares its own layer,
+ *  so this is a lookup and never a list of names: "P" is process (it governs how we work at all)
+ *  and "0" is platform (identity, storage, mail — every story stands on it). Anything above that
+ *  is owned by a product, and which product is a MAJORITY of its records, not a declaration. */
+export const SHARED_LAYERS = new Set(['P', '0']);
+/** The scope key for "serves every root" — a value, not a null, so a consumer switching on the
+ *  field never has to decide what an absence means. */
+export const SHARED_SCOPE = 'shared';
+
+/** The story root a record answers to: walk `refines` upward and take the HIGHEST story on the
+ *  chain. Taking the highest is what collapses a hive — `story:audition-search` refines
+ *  `story:auditions`, so every record under the hive roots at the app, which is the level the
+ *  question "which product is this?" is asked at. `grounds`/`consumes` never count: a record that
+ *  cites a principle or depends on a model has not thereby joined that branch (the same rule the
+ *  refinement hierarchy already states). A record whose chain ends anywhere but a story has no
+ *  root — which is the honest answer for the engineering half. */
+export function rootStoryOf(id, byId) {
+  let root = null;
+  const seen = new Set();
+  for (let cur = id; cur && !seen.has(cur);) {
+    seen.add(cur);
+    if (kindOf(cur) === 'story') root = cur;
+    const rec = byId.get(cur);
+    if (!rec) break;
+    cur = rec.links?.refines;
+  }
+  return root;
+}
+
+/** `story:hq` → `hq`. The chip key: a root's short name is the app it names. */
+export const rootAppOf = (storyId) => (storyId ? storyId.slice(storyId.indexOf(':') + 1) : null);
+
+/** Every root-story fact the explorer needs, derived once: per record, per module, and the root
+ *  list itself (the stories nothing else refines — the top of each product tree).
+ *
+ *  `scopeOf` is the ONE answer to "which chip shows this?": a record's own root, else the root of
+ *  the cloud it sits in (a model has no refines chain but it is owned by a module that serves a
+ *  product), else SHARED. The UI never re-derives it — a second copy of this rule in a renderer is
+ *  the defect eng:namespace-names-kind exists to prevent. */
+export function rootStoryIndex({ records = [], byId = new Map(), modules, moduleByName = new Map() } = {}) {
+  const moduleList = modules ?? [...moduleByName.values()];
+  const byRecord = new Map(records.map((r) => [r.id, rootStoryOf(r.id, byId)]));
+
+  const roots = records
+    .filter((r) => kindOf(r.id) === 'story' && !r.links?.refines)
+    .map((r) => r.id)
+    .sort();
+
+  const byModule = new Map();
+  for (const m of moduleList) {
+    const tally = new Map();
+    for (const rec of records) {
+      if (cloudOf(rec) !== m.name) continue;
+      const root = byRecord.get(rec.id);
+      if (root) tally.set(root, (tally.get(root) ?? 0) + 1);
+    }
+    // A module whose records root nowhere serves nothing in particular — the same standing as a
+    // platform layer, reported the same way rather than as a null the caller has to interpret.
+    const ranked = [...tally].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const shared = SHARED_LAYERS.has(String(m.layer ?? '')) || !ranked.length;
+    byModule.set(m.name, {
+      module: m.name,
+      layer: String(m.layer ?? ''),
+      shared,
+      rootStory: shared ? null : ranked[0][0],
+      tally: Object.fromEntries(ranked),
+    });
+  }
+
+  const scopeOf = (rec) => {
+    const own = byRecord.get(rec.id) ?? rootStoryOf(rec.id, byId);
+    if (own) return own;
+    const mod = byModule.get(cloudOf(rec));
+    return mod && !mod.shared ? mod.rootStory : SHARED_SCOPE;
+  };
+
+  const counts = new Map(roots.map((r) => [r, 0]));
+  for (const rec of records) {
+    const s = scopeOf(rec);
+    counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+
+  return {
+    byRecord, byModule, roots, scopeOf,
+    summary: roots.map((id) => ({ id, key: rootAppOf(id), count: counts.get(id) ?? 0 })),
+    sharedCount: counts.get(SHARED_SCOPE) ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Validation — every rule the retired scripts/ledger-atlas/validate.mjs + build.mjs
+// asserted, restated against the file store. Each returns { id, rule, message }.
+// ---------------------------------------------------------------------------
+
+const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
+
+// ---------------------------------------------------------------------------
+// The ONE-WAY DIRECTION rule (inbox 009) — what replaced the module export contract
+// ---------------------------------------------------------------------------
+
+/** WHICH TREE MAY REFERENCE WHICH. Reference flows one way and never sideways:
+ *
+ *    product/<app> → capabilities/<any> → models → engineering
+ *    capabilities/<a> → capabilities/<b>, one-way and ACYCLIC (a library dependency)
+ *    engineering → engineering;  models → models
+ *    principles are citable from anywhere (handled by the caller: a `grounds` on a principle)
+ *
+ *  One absence carries weight: NOTHING reaches into a product tree from outside it — a product is
+ *  the top of the order, so a second product needing the same fact needs a shared model, not a
+ *  reach. (Adroit's own corpus lives upstream in its own repository, so no local tree can link to
+ *  it at all — an upstream id cited in prose is not an edge.) */
+export function mayReference(from, to) {
+  if (from === to) return true;
+  if (from.startsWith('product/')) return to.startsWith('capabilities/') || to === 'models' || to === 'engineering';
+  if (from.startsWith('capabilities/')) return to.startsWith('capabilities/') || to === 'models' || to === 'engineering';
+  // models/views answer to models/views and the principles; engineering to itself.
+  return false;
+}
+
+/** What a tree may legally reach, in words — so the error says the rule, not just "no". */
+export const legalTargets = (from) =>
+  from.startsWith('product/') ? 'its own tree, a capability, models/views, or engineering'
+    : from.startsWith('capabilities/') ? 'its own capability, another capability, models/views, or engineering'
+      : from === 'models' ? 'models/views and the principles'
+        : `only ${from} and the principles`;
+
+/** Direction edges that PREDATE the check — the three the four-roots rulings left behind (they
+ *  measured `consumes`, and only after the adroit root existed did the last one appear). A ONE-WAY
+ *  RATCHET, the shape eng-lint's baseline already uses: these stay visible as warnings, anything
+ *  NEW is an error. Retiring one is a content ruling, not a tooling change. */
+export const DIRECTION_BASELINE = [
+  // Empty since 2026-09-24: the three edges that predated the check were retired by pattern
+  // (corpus-boundary demotion, provenance demotion, product→capability adherence). The ratchet
+  // stays: anything appearing here again is a grandfathering RULING, never a quiet append.
+];
+export const directionKey = (fromId, type, toId) => `${fromId} ${type} ${toId}`;
+
+/** Every direction edge the store actually has that the rule forbids, baseline or not. One walk;
+ *  `validate` errors on the new ones and `warn` names the grandfathered ones, so the two can never
+ *  disagree about what is crossing a boundary. */
+export function directionViolations({ records = [], byId = new Map() } = {}, baseline = DIRECTION_BASELINE) {
+  const out = [];
+  for (const rec of records) {
+    const from = rec._tree;
+    if (!from) continue;               // the retired JSON format carries no path, so no direction
+    for (const [type, target] of outboundEdges(rec)) {
+      const to = byId.get(target);
+      if (!to || !to._tree) continue;                            // dangling is its own error
+      if (type === 'grounds' && isPrinciple(target)) continue;    // principles are universal
+      if (mayReference(from, to._tree)) continue;
+      out.push({
+        id: rec.id, type, target, from, to: to._tree,
+        key: directionKey(rec.id, type, target),
+        grandfathered: baseline.includes(directionKey(rec.id, type, target)),
+      });
+    }
+  }
+  return out;
+}
+
+/** The capability dependency graph: every edge one capability's records or contract lay on
+ *  another. Library dependencies, so they must be ACYCLIC — a cycle means neither capability can
+ *  be understood, extracted or replaced without the other. */
+export function capabilityDependencies({ records = [], byId = new Map(), contracts = new Map() } = {}) {
+  const edges = new Map();
+  const add = (a, b, why) => {
+    if (!a || !b || a === b) return;
+    const m = edges.get(a) ?? new Map();
+    m.set(b, [...(m.get(b) ?? []), why]);
+    edges.set(a, m);
+  };
+  for (const rec of records) {
+    const a = capabilityOfTree(rec._tree ?? '');
+    if (!a) continue;
+    for (const [type, target] of outboundEdges(rec)) {
+      add(a, capabilityOfTree(byId.get(target)?._tree ?? ''), `${rec.id} ${type} ${target}`);
+    }
+  }
+  for (const [name, c] of contracts) {
+    for (const u of [].concat(c?.uses ?? [])) if (typeof u === 'string') add(name, u, `${name}'s contract uses ${u}`);
+  }
+  return edges;
+}
+
+/** Cycles in that graph, as name paths. Depth-first with a stack, so the report names the loop
+ *  rather than merely asserting one exists. */
+export function capabilityCycles(edges) {
+  const cycles = [], state = new Map(), stack = [];
+  const walk = (node) => {
+    state.set(node, 1);
+    stack.push(node);
+    for (const next of edges.get(node)?.keys() ?? []) {
+      if (state.get(next) === 1) cycles.push([...stack.slice(stack.indexOf(next)), next]);
+      else if (!state.has(next)) walk(next);
+    }
+    stack.pop();
+    state.set(node, 2);
+  };
+  for (const node of [...edges.keys()].sort()) if (!state.has(node)) walk(node);
+  return cycles;
+}
+
+export function validate({
+  records, byId, moduleByName = new Map(), modules, contracts = new Map(),
+  domains = new Map(), domainsRaw, strayRoots = [],
+}) {
+  const errors = [];
+  const bad = (id, rule, message) => errors.push({ id, rule, message });
+  // A directory beside the roots is invisible to every rule below, so a record filed there would
+  // pass the check unexamined — the retired adroit/ root is the case this names.
+  for (const name of strayRoots) {
+    bad(`${name}/`, 'root', `is not a ledger root — records live under ${TREE_ROOTS.join(', ')} ` +
+      `(plus ${NON_TREE_DIRS.join(', ')}) — adr:four-decision-roots` +
+      (name === RETIRED_INTERACTIONS_DIR
+        ? `; interaction events are machine-local telemetry, appended to ${interactionLogPath('<corpus>')} (eng:log-ledger-interactions)`
+        : ''));
+  }
+  const moduleList = modules ?? [...moduleByName.values()];
+  // A namespace must name a CAPABILITY TREE, a reserved kind, or a DECLARED DOMAIN before a record
+  // may use it — eng:namespace-names-kind's lookup. A module entry with no `kind` is the retired
+  // JSON store, whose namespaces were module names.
+  const capabilities = new Set(moduleList.filter((m) => m.kind === 'capability').map((m) => m.name));
+  const namespaces = new Set([
+    ...moduleList.filter((m) => m.kind === 'capability' || m.kind === undefined).map((m) => m.name),
+    ...domains.keys(),
+  ]);
+
+  // --- the domain declaration (domains.yaml) ----------------------------------
+  // Each domain is a name and the line saying what it covers. A domain may not shadow a kind or a
+  // capability — one namespace, one meaning — and a domain no record uses is a stale declaration.
+  if (domainsRaw !== undefined && (!domainsRaw || typeof domainsRaw !== 'object' || Array.isArray(domainsRaw))) {
+    bad(DOMAINS_FILE, 'domains', 'must be a mapping of domain name → what it covers');
+  } else if (domainsRaw && CORPUS_KEY in domainsRaw && !(typeof domainsRaw[CORPUS_KEY] === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(domainsRaw[CORPUS_KEY]))) {
+    // It names a directory under ~/.adroit, so it has to be a safe one.
+    bad(DOMAINS_FILE, 'domains', `'${CORPUS_KEY}' must be a lowercase kebab name — it keys the machine-local interaction log`);
+  }
+  const inUse = new Set(records.map((r) => (typeof r.id === 'string' ? namespaceOf(r.id) : null)));
+  for (const [name, purpose] of domains) {
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is not a lowercase namespace`);
+    if (typeof purpose !== 'string' || !purpose.trim()) bad(DOMAINS_FILE, 'domains', `'${name}' names no purpose`);
+    if (RESERVED_KINDS.includes(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is a reserved kind, not a domain`);
+    if (capabilities.has(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is a capability tree — its namespace already means that`);
+    if (!inUse.has(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is declared but no record uses it`);
+  }
+  const treeSize = new Map();
+  for (const r of records) if (r._tree) treeSize.set(r._tree, (treeSize.get(r._tree) ?? 0) + 1);
+
+
+  // Two records claiming the same id: in the tree that is two files, and only one of them can be
+  // the record — `byId` keeps the last, so without this the other simply disappears.
+  const seenIds = new Map();
+  for (const rec of records) {
+    const at = rec._rel ?? rec._file ?? '(in memory)';
+    if (seenIds.has(rec.id)) bad(rec.id, 'duplicate-id', `also written to ${seenIds.get(rec.id)} (this one: ${at})`);
+    else seenIds.set(rec.id, at);
+  }
+
+  for (const rec of records) {
+    const id = rec.id;
+    if (typeof id !== 'string' || !id) { bad(rec._rel ?? rec._file ?? '(record)', 'shape', 'id must be a non-empty string'); continue; }
+    // THE FILE PATH IS THE CLAIM. A leaf is `<stem>.yaml`; a record with children is the folder
+    // `<stem>/` and its `self.yaml`; a product tree's story root is named by the APP, because the
+    // app is what the folder means. (A retired JSON record claims `<stem>.json` instead.)
+    if (rec._rel) {
+      const base = path.posix.basename(rec._rel), dir = path.posix.dirname(rec._rel);
+      const stem = base === SELF ? path.posix.basename(dir) : base.slice(0, -'.yaml'.length);
+      const app = dir.startsWith('product/') && dir.split('/').length === 2 ? dir.slice('product/'.length) : null;
+      if (stem !== stemFor(id) && !(base === SELF && app && id === `story:${app}`)) {
+        bad(id, 'filename', `lives in ${rec._rel} but its id demands ` +
+          (base === SELF ? `a folder named ${stemFor(id)}/` : yamlNameFor(id)));
+      }
+      // The path already says what this refines, so the file saying it again is a second copy of
+      // one edge — and the two can disagree, which is the failure this forbids outright.
+      if (rec._restatedRefines) {
+        bad(id, 'nesting', `sits inside ${rec._nestedUnder}/ and still names links.refines — the path carries it`);
+      }
+    } else if (rec._file && path.basename(rec._file) !== fileNameFor(id)) {
+      bad(id, 'filename', `lives in ${rec._file} but its id demands ${fileNameFor(id)}`);
+    }
+    // eng:namespace-names-kind, as gates. An id in the tree is `<namespace>:<slug>` — named for what
+    // it decides, never numbered (the retired JSON store predates the rule and is read as it was).
+    if (rec._rel && !ID_SHAPE.test(id)) {
+      bad(id, 'id-shape', `must be <namespace>:<kebab-case-slug> naming the decision's substance`);
+    }
+    // …and a namespace must be declared before it is used.
+    const ns = namespaceOf(id);
+    if (ns && !RESERVED_KINDS.includes(ns) && !namespaces.has(ns)) {
+      bad(id, 'namespace', `namespace '${ns}:' is neither a capability tree, a reserved kind ` +
+        `(${RESERVED_KINDS.join(', ')}), nor a domain declared in ${DOMAINS_FILE} — declare it before using it`);
+    }
+    // …and a capability-namespaced record is a record OF that capability, so it lives in its tree.
+    if (ns && capabilities.has(ns) && rec._tree && rec._tree !== `capabilities/${ns}`) {
+      bad(id, 'namespace', `is namespaced to the '${ns}' capability but lives in ${rec._tree}`);
+    }
+    if (typeof rec.decision !== 'string' || !rec.decision.trim()) bad(id, 'shape', 'decision must be a non-empty string');
+    if (!isStrArray(rec.rejected)) bad(id, 'shape', 'rejected must be an array of strings');
+    for (const dropped of RETIRED_FIELDS) {
+      if (rec[dropped] !== undefined) bad(id, 'shape', `'${dropped}' is not a record field (eng:decision-per-file)`);
+    }
+    if (rec.links === undefined || typeof rec.links !== 'object' || Array.isArray(rec.links)) {
+      bad(id, 'shape', 'links must be an object');
+      continue;
+    }
+
+    const links = rec.links;
+    if (links.domain !== undefined && typeof links.domain !== 'string' && !isStrArray(links.domain)) {
+      bad(id, 'shape', 'links.domain must be a string or an array of strings');
+    }
+    if (links.grounds !== undefined && !isStrArray(links.grounds)) bad(id, 'shape', 'links.grounds must be an array of strings');
+    if (links.consumes !== undefined && !isStrArray(links.consumes)) bad(id, 'shape', 'links.consumes must be an array of strings');
+    if (links.refines !== undefined && typeof links.refines !== 'string') bad(id, 'shape', 'links.refines must be a string');
+    if (links.module !== undefined && typeof links.module !== 'string') bad(id, 'shape', 'links.module must be a string');
+    if (links.owner !== undefined && typeof links.owner !== 'string') bad(id, 'shape', 'links.owner must be a string');
+
+    // RETIRED with the module files: the model-owner rules (a model named exactly one declared
+    // owner module). A model now lives in the `models/` root, owned by nobody and citable by
+    // everybody — the axis those rules guarded (which cloud does this draw in?) is the path.
+
+    const grounds = isStrArray(links.grounds) ? links.grounds : [];
+    const consumes = isStrArray(links.consumes) ? links.consumes : [];
+    if (new Set(grounds).size !== grounds.length) bad(id, 'duplicate', 'duplicate grounds link');
+    if (new Set(consumes).size !== consumes.length) bad(id, 'duplicate', 'duplicate consumes dependency');
+
+    // Link targets must exist. `domain` is declared by being referenced (it names no record);
+    // `tension` names a principle, which IS a record.
+    for (const [kind, targets] of [['grounds', grounds], ['consumes', consumes],
+      ['refines', typeof links.refines === 'string' ? [links.refines] : []]]) {
+      for (const t of targets) {
+        if (t === id) bad(id, 'self', `cannot ${kind === 'grounds' ? 'ground on' : kind === 'refines' ? 'refine' : 'depend on'} itself`);
+        else if (!byId.has(t)) bad(id, 'dangling', `${kind} '${t}' names no decision`);
+      }
+    }
+    for (const slug of tensionsOf(rec)) {
+      if (!byId.has(tensionTarget(slug))) bad(id, 'dangling', `tension '${slug}' names no principle`);
+    }
+
+    // The refinement hierarchy: principles are roots and are cited via grounds, never refined onto.
+    if (links.refines) {
+      if (isPrinciple(id)) bad(id, 'hierarchy', 'principles are roots and take no refines');
+      if (isPrinciple(links.refines)) bad(id, 'hierarchy', `refines a principle — cite it in grounds instead`);
+    }
+
+    // RETIRED with the module files: the module-assignment lookup (a record named a declared
+    // module), and the module-ledger export contract (`api: true` to be reachable across a
+    // boundary, and no live record depending on a pilot one). Both asked "may this edge cross
+    // this boundary?" — which the DIRECTION rule below now asks of the whole store at once,
+    // against boundaries the filesystem draws rather than boundaries a file declared.
+  }
+
+  // --- the ONE-WAY DIRECTION rule -------------------------------------------
+  for (const v of directionViolations({ records, byId })) {
+    if (v.grandfathered) continue;                 // warn() names these; the ratchet holds the rest
+    bad(v.id, 'direction', `${v.type} '${v.target}' in ${v.to} — a record in ${v.from} may reference ` +
+      `${legalTargets(v.from)}`);
+  }
+  for (const cycle of capabilityCycles(capabilityDependencies({ records, byId, contracts }))) {
+    bad(`capabilities/${cycle[0]}`, 'capability-cycle',
+      `capability dependencies must be one-way: ${cycle.join(' → ')}`);
+  }
+
+  // --- the capability contracts ---------------------------------------------
+  // A capability publishes ONE artifact consumers buy into. Every tree has one and every one has a
+  // tree: a contract with no capability publishes an interface nothing implements, and a
+  // capability with no contract asks consumers to guess at its surface.
+  for (const [tree, size] of treeSize) {
+    const cap = capabilityOfTree(tree);
+    if (cap && size && !contracts.has(cap)) {
+      bad(tree, 'contract', `publishes no ${CONTRACT} — a capability's interface is what consumers buy into`);
+    }
+  }
+  for (const [name, c] of contracts) {
+    const at = `capabilities/${name}/${CONTRACT}`;
+    if (!treeSize.get(`capabilities/${name}`)) bad(at, 'contract', `names no capability tree — nothing implements it`);
+    if (!c || typeof c !== 'object' || Array.isArray(c)) { bad(at, 'contract', 'must be a mapping'); continue; }
+    for (const k of CONTRACT_KEYS) if (!(k in c)) bad(at, 'contract', `names no '${k}'`);
+    if (c.capability !== undefined && c.capability !== name) {
+      bad(at, 'contract', `declares capability '${c.capability}' but sits in capabilities/${name}/`);
+    }
+    if (c.purpose !== undefined && (typeof c.purpose !== 'string' || !c.purpose.trim())) {
+      bad(at, 'contract', 'purpose must be a non-empty string');
+    }
+    for (const k of ['inputs', 'outputs', 'models', 'uses']) {
+      if (c[k] !== undefined && !isStrArray(c[k])) bad(at, 'contract', `${k} must be an array of strings`);
+    }
+    for (const u of [].concat(c.uses ?? [])) {
+      if (typeof u !== 'string') continue;
+      if (u === name) bad(at, 'contract', 'uses itself');
+      else if (!capabilities.has(u)) bad(at, 'contract', `uses '${u}', which is no capability`);
+    }
+    for (const m of [].concat(c.models ?? [])) {
+      if (typeof m !== 'string') continue;
+      if (kindOf(m) !== 'model' && kindOf(m) !== 'view') bad(at, 'contract', `models '${m}' is not a model: or view: id`);
+      else if (!byId.has(m)) bad(at, 'contract', `models '${m}' names no record`);
+    }
+  }
+
+  // No cycles in the refinement chain.
+  for (const rec of records) {
+    if (!rec.links?.refines) continue;
+    const seen = [rec.id];
+    for (let cur = rec.links.refines; cur; cur = byId.get(cur)?.links?.refines) {
+      if (seen.includes(cur)) {
+        bad(rec.id, 'cycle', `cycle in refines: ${[...seen, cur].join(' → ')}`);
+        break;
+      }
+      seen.push(cur);
+    }
+  }
+  return errors;
+}
+
+/** WARNINGS — things worth seeing that are not errors, so they never fail the check
+ *  (eng:honest-exit-codes). Derived from the store itself, never from a second map.
+ *
+ *  RETIRED with the module files: `module-incoherent` (a module falling into pieces — a tree holds
+ *  together by construction, since nesting IS the link), `module-unassigned` (a hand-written record
+ *  skipping its module — placement is now the path, which cannot be skipped), and the two model
+ *  export/import findings (there are no declarations left to disagree with the traffic).
+ *
+ *  What replaces them is the DIRECTION ratchet: the edges the one-way rule forbids and the
+ *  baseline grandfathers, named every run so they cannot quietly become permanent.
+ */
+export function warn({ records, byId = new Map() }, baseline = DIRECTION_BASELINE) {
+  const warnings = [];
+  const live = new Set();
+  for (const v of directionViolations({ records, byId }, baseline)) {
+    if (!v.grandfathered) continue;               // a new one is an error, not a warning
+    live.add(v.key);
+    warnings.push({
+      id: v.id, rule: 'direction-baseline',
+      message: `${v.type} '${v.target}': ${v.from} → ${v.to} breaks the one-way rule and is ` +
+        `grandfathered — retiring it is a ruling, not a tooling change`,
+    });
+  }
+  // A ratchet only ratchets if it also lets go: an entry nothing matches is a licence still being
+  // carried for an edge somebody already removed.
+  for (const key of baseline) {
+    if (!live.has(key) && records.some((r) => r._tree)) {
+      warnings.push({ id: key, rule: 'direction-baseline-stale',
+        message: 'the baseline grandfathers an edge the store no longer has — prune it' });
+    }
+  }
+  return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// The derived graph
+// ---------------------------------------------------------------------------
+
+/** Inbound edge index: for every record, who refines / grounds on / consumes it. */
+export function graphOf({ records }) {
+  const refinedBy = new Map(), groundedOn = new Map(), consumedBy = new Map(), tensionWith = new Map();
+  const push = (m, k, v) => m.set(k, [...(m.get(k) ?? []), v]);
+  for (const r of records) {
+    if (r.links?.refines) push(refinedBy, r.links.refines, r.id);
+    for (const g of groundsOf(r)) push(groundedOn, g, r.id);
+    for (const c of consumesOf(r)) push(consumedBy, c, r.id);
+    for (const t of tensionsOf(r)) push(tensionWith, tensionTarget(t), r.id);
+  }
+  return { refinedBy, groundedOn, consumedBy, tensionWith };
+}
+
+/** The neighborhood of one decision: every typed edge, both directions. */
+export function neighborhood(id, ctx) {
+  const { byId } = ctx;
+  const g = ctx.graph ?? graphOf(ctx);
+  const rec = byId.get(id);
+  if (!rec) return null;
+  const brief = (rid, type) => {
+    const r = byId.get(rid);
+    return { type, id: rid, decision: r ? truncate(r.decision, 150) : null, module: r ? moduleOf(r) : null, missing: !r };
+  };
+  const outbound = [
+    ...(rec.links?.refines ? [brief(rec.links.refines, 'refines')] : []),
+    ...groundsOf(rec).map((t) => brief(t, 'grounds')),
+    ...consumesOf(rec).map((t) => brief(t, 'consumes')),
+    ...tensionsOf(rec).map((t) => brief(tensionTarget(t), 'tension')),
+  ];
+  const inbound = [
+    ...(g.refinedBy.get(id) ?? []).map((t) => brief(t, 'refined-by')),
+    ...(g.groundedOn.get(id) ?? []).map((t) => brief(t, 'grounds-on-this')),
+    ...(g.consumedBy.get(id) ?? []).map((t) => brief(t, 'consumed-by')),
+    ...(g.tensionWith.get(id) ?? []).map((t) => brief(t, 'in-tension-with')),
+  ];
+  return { record: rec, outbound, inbound };
+}
+
+/** Blast radius (ported from the retired scripts/adroit/impact.mjs): what a change to this
+ *  decision forces a re-check of. Outbound fits, inbound dependents, the transitive refinement
+ *  subtree, prose citations, bound tests, and repo citations. */
+export function computeImpact(id, ctx, { scan = true } = {}) {
+  const { records, byId } = ctx;
+  const rec = byId.get(id);
+  if (!rec) return null;
+  const g = ctx.graph ?? graphOf(ctx);
+  const brief = (r, note) => ({ id: r.id, note, decision: truncate(r.decision), module: moduleOf(r) });
+
+  const nb = neighborhood(id, { ...ctx, graph: g });
+  const outbound = nb.outbound.filter((e) => !e.missing).map((e) => brief(byId.get(e.id), e.type));
+  const inbound = nb.inbound.map((e) => brief(byId.get(e.id), e.type));
+
+  // Refinements of refinements inherit the change.
+  const subtree = [];
+  const queue = [id];
+  const seen = new Set([id]);
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const child of g.refinedBy.get(cur) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      queue.push(child);
+      if (byId.get(child).links.refines !== id) subtree.push(brief(byId.get(child), `via ${byId.get(child).links.refines}`));
+    }
+  }
+
+  // Prose citations: a citation inside a statement has bearing and should have been a typed edge.
+  const stmtCites = [], whyCites = [];
+  for (const r of records) {
+    if (r.id === id) continue;
+    if ((r.decision ?? '').includes(id)) stmtCites.push(brief(r, 'CITES IN DECISION — should be a typed edge'));
+    else if ((r.context?.why ?? '').includes(id)) whyCites.push(brief(r, 'provenance only'));
+  }
+
+  const bindings = scan ? (decisionRefBindings().get(id) ?? []) : [];
+  const citations = scan
+    ? scanRepo(id).filter((h) => !h.file.startsWith('ledger/') && !h.line.includes('@DecisionRef'))
+    : [];
+
+  const radius = new Set([...inbound, ...subtree, ...stmtCites].map((r) => r.id));
+  return {
+    record: rec, outbound, inbound, subtree, stmtCites, whyCites, bindings, citations,
+    summary: { decisions: radius.size, boundTests: bindings.length, repoCitations: citations.length },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Repo scanning (for @DecisionRef bindings and citations)
+// ---------------------------------------------------------------------------
+
+const SKIP_DIRS = new Set(['node_modules', 'target', 'dist', 'build', '.git', 'coverage']);
+const TEXT_EXT = new Set([
+  '.java', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.md', '.json', '.jsonl',
+  '.sql', '.yml', '.yaml', '.conf', '.css', '.html', '.txt',
+]);
+
+/** Walk the repo's source-ish directories, yielding { file, lineNo, line } per hit. */
+export function scanRepo(needle, dirs = ['beans/src', 'magic', 'scripts', 'tasks', 'tools', 'decisions', 'ledger', 'nginx']) {
+  const hits = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
+        continue;
+      }
+      if (!TEXT_EXT.has(path.extname(entry.name))) continue;
+      const file = path.join(dir, entry.name);
+      const content = fs.readFileSync(file, 'utf8');
+      if (!content.includes(needle)) continue;
+      content.split('\n').forEach((line, i) => {
+        if (line.includes(needle)) hits.push({ file: path.relative(ROOT, file), lineNo: i + 1, line: line.trim() });
+      });
+    }
+  };
+  for (const d of dirs) walk(path.join(ROOT, d));
+  return hits;
+}
+
+/** All @DecisionRef bindings in the backend test tree, as { id -> [{file, lineNo}] }. */
+export function decisionRefBindings() {
+  const bindings = new Map();
+  for (const hit of scanRepo('@DecisionRef', ['beans/src/test'])) {
+    for (const quoted of hit.line.match(/"([^"]+)"/g) ?? []) {
+      const id = quoted.slice(1, -1);
+      if (!bindings.has(id)) bindings.set(id, []);
+      bindings.get(id).push({ file: hit.file, lineNo: hit.lineNo });
+    }
+  }
+  return bindings;
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/** Text/module/domain search over the loaded records. */
+export function search(ctx, { q = '', module, domain, platitude } = {}) {
+  const needle = q.trim().toLowerCase();
+  return ctx.records.filter((r) => {
+    if (module && moduleOf(r) !== module) return false;
+    if (domain && !domainsOf(r).includes(domain)) return false;
+    if (platitude && (r.rejected ?? []).length) return false;
+    if (!needle) return true;
+    // Every WORD has to land somewhere in the record, not the whole phrase in one place:
+    // "cast graphic" should find the cast-list graphic decision, whose words are apart.
+    const hay = [
+      r.id, r.decision, ...(r.rejected ?? []),
+      r.context?.why ?? '', r.context?.src ?? '',
+    ].join(' \u0001 ').toLowerCase();
+    return needle.split(/\s+/).every((term) => hay.includes(term));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Semantic diff — GRAPH OPERATIONS, not text hunks. A review of the ledger should read
+// "cast:shareable-cast-list-graphic dropped consumes infra:one-hero-card-per-listing", not a JSON line that moved. The phrasing lives here
+// once, so the CLI report and the explorer's Diff view can never describe the same edit
+// differently.
+// ---------------------------------------------------------------------------
+
+/** The typed links. The first four are graph EDGES (they carry dependency); domain and module
+ *  are classifications — they move a record without re-wiring anything, and are counted apart. */
+export const LINK_TYPES = ['refines', 'grounds', 'consumes', 'tension', 'domain', 'module'];
+export const EDGE_TYPES = new Set(['refines', 'grounds', 'consumes', 'tension']);
+
+const linkSet = (rec, type) => new Set([].concat(rec?.links?.[type] ?? []));
+const missing = (a, b) => [...a].filter((x) => !b.has(x)); // in a, not in b
+const firstLine = (text = '') => truncate(text.split(/(?<=\.)\s/)[0] ?? text, 120);
+
+/** Show a text change compactly: trim what both versions share and quote only what moved. */
+export function compactTextChange(before = '', after = '') {
+  if (before === after) return null;
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  let end = 0;
+  while (end < before.length - start && end < after.length - start
+    && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+  // Snap both cuts out to word boundaries: "Each"→"Every" reads as a word change, where a
+  // character-level trim would print the unreadable sliver "ach"→"very".
+  const ws = (c) => c === undefined || /\s/.test(c);
+  while (start > 0 && !ws(before[start - 1])) start--;
+  while (end > 0 && !ws(before[before.length - end - 1])) end--;
+  const oldMid = before.slice(start, before.length - end).trim();
+  const newMid = after.slice(start, after.length - end).trim();
+  if (!oldMid && !newMid) return null;
+  // Nothing meaningful shared: show both, truncated, rather than a confusing sliver.
+  if (start + end < 12) return `"${truncate(before, 90)}" → "${truncate(after, 90)}"`;
+  const lead = start ? '…' : '';
+  const tail = end ? '…' : '';
+  if (!oldMid) return `${lead}inserted "${truncate(newMid, 90)}"${tail}`;
+  if (!newMid) return `${lead}removed "${truncate(oldMid, 90)}"${tail}`;
+  return `${lead}"${truncate(oldMid, 90)}" → "${truncate(newMid, 90)}"${tail}`;
+}
+
+/** Compare two stores. Returns added / deleted / changed records with their operations, the
+ *  module and interaction-log deltas, and a summary that FLAGS every record whose edges moved
+ *  with no corresponding change to what it says — a silent re-wiring is what review must see. */
+export function diffStores(base, head, { ref = '' } = {}) {
+  const added = [], deleted = [], changed = [];
+  let edgesAdded = 0, edgesRemoved = 0;
+
+  for (const rec of head.records) {
+    if (!base.byId.has(rec.id)) added.push({ id: rec.id, decision: firstLine(rec.decision), module: moduleOf(rec) });
+  }
+  for (const rec of base.records) {
+    if (!head.byId.has(rec.id)) deleted.push({ id: rec.id, decision: firstLine(rec.decision), module: moduleOf(rec) });
+  }
+
+  for (const after of head.records) {
+    const before = base.byId.get(after.id);
+    if (!before) continue;
+    const ops = [];
+    let edgeMoved = false, saidSomethingDifferent = false;
+
+    for (const type of LINK_TYPES) {
+      const b = linkSet(before, type), a = linkSet(after, type);
+      const gained = missing(a, b), lost = missing(b, a);
+      if (!gained.length && !lost.length) continue;
+      if (EDGE_TYPES.has(type)) {
+        edgeMoved = true;
+        edgesAdded += gained.length;
+        edgesRemoved += lost.length;
+      }
+      if (lost.length) ops.push({ kind: 'link-lost', type, ids: lost, line: `dropped ${type} ${lost.join(', ')}` });
+      if (gained.length) ops.push({ kind: 'link-gained', type, ids: gained, line: `gained ${type} ${gained.join(', ')}` });
+    }
+
+    if (before.decision !== after.decision) {
+      saidSomethingDifferent = true;
+      ops.push({ kind: 'decision-text', before: before.decision, after: after.decision,
+        line: `decision text changed: ${compactTextChange(before.decision, after.decision)}` });
+    }
+
+    const rb = before.rejected ?? [], ra = after.rejected ?? [];
+    const rAdded = ra.filter((x) => !rb.includes(x)), rRemoved = rb.filter((x) => !ra.includes(x));
+    if (rAdded.length || rRemoved.length) {
+      saidSomethingDifferent = true;
+      if (rAdded.length) ops.push({ kind: 'rejected-grown', items: rAdded,
+        line: `rejected grew ${rb.length}→${ra.length}: + ${rAdded.map((x) => truncate(x, 70)).join(' | ')}` });
+      if (rRemoved.length) ops.push({ kind: 'rejected-shrunk', items: rRemoved,
+        line: `rejected shrank ${rb.length}→${ra.length}: − ${rRemoved.map((x) => truncate(x, 70)).join(' | ')}` });
+    }
+
+    // Context is never load-bearing, so it collapses to one line however much of it moved.
+    if (JSON.stringify(before.context ?? {}) !== JSON.stringify(after.context ?? {})) {
+      ops.push({ kind: 'context', line: 'context edited' });
+    }
+
+    if (ops.length) {
+      changed.push({ id: after.id, module: moduleOf(after), ops, silentRewire: edgeMoved && !saidSomethingDifferent });
+    }
+  }
+
+  const moduleNames = (s) => new Set(s.modules.map((m) => m.name));
+  const mb = moduleNames(base), ma = moduleNames(head);
+
+  const silentRewires = changed.filter((c) => c.silentRewire).map((c) => c.id);
+  return {
+    ref,
+    added, deleted, changed,
+    modulesAdded: missing(ma, mb), modulesRemoved: missing(mb, ma),
+    summary: {
+      recordsTouched: added.length + deleted.length + changed.length,
+      edgesAdded, edgesRemoved, silentRewires,
+    },
+  };
+}
+
+/** True when the working tree differs from the ref at all — what the Diff tab keys off. */
+export const hasDiff = (d) =>
+  d.summary.recordsTouched > 0 || d.modulesAdded.length > 0 || d.modulesRemoved.length > 0;
+
+// ---------------------------------------------------------------------------
+// Graph view data — nodes, typed edges, and the size rule
+// ---------------------------------------------------------------------------
+
+/** Spring strength per edge type. `refines` is the hierarchy, so it pulls hardest and is what
+ *  makes a refinement family read as a clump; `grounds` is a citation, so it barely pulls at all
+ *  or every principle would drag a third of the ledger onto itself. */
+export const EDGE_PHYSICS = {
+  refines: { strength: 1.1, length: 24 },
+  consumes: { strength: 0.45, length: 70 },
+  grounds: { strength: 0.05, length: 200 },
+  tension: { strength: 0.15, length: 120 },
+};
+
+/** The import pull: a model against an importing module's centroid. Weaker than `refines` (the
+ *  owner's cloud must still hold onto its own model) but stronger than `grounds`, so a model with
+ *  several importers is dragged to the rim between them instead of staying buried. */
+export const IMPORT_PHYSICS = { strength: 0.5, length: 150 };
+
+/** A node's GIST: what the decision is ABOUT, in two or three words, so the graph reads at a
+ *  glance instead of as a wall of ids: the opening of its statement. Derived, never stored —
+ *  reword the rule and the label follows. */
+export function gistOf(rec) {
+  return (rec.decision ?? '').split(/\s+/).slice(0, 4).join(' ').replace(/[.,;:—]+$/, '');
+}
+
+/** The universal half of the ledger: the principles plus the engineering decisions. These apply
+ *  to EVERYTHING, so in one graph they connect to everything and drown the domain structure —
+ *  which is why the explorer splits the corpus in two rather than drawing one hairball. */
+/** The universal half of the ledger, decided by LAYER rather than by naming a module: a record
+ *  whose module sits at layer "P" applies to everything, so in one graph it links to everything
+ *  and drowns the domain structure. Modules declare their own layer, so splitting or adding a
+ *  process module moves its records here with no code change — naming `engineering` was exactly
+ *  the brittleness that broke when that module was retired. */
+export const isEngineering = (rec, moduleByName) => {
+  if (isPrinciple(rec.id)) return true;
+  const m = moduleByName?.get?.(moduleOf(rec));
+  return String(m?.layer ?? '') === 'P';
+};
+
+export const SCOPES = {
+  product: (rec, moduleByName) => !isEngineering(rec, moduleByName),
+  engineering: (rec, moduleByName) => isEngineering(rec, moduleByName),
+  all: () => true,
+};
+
+/** What every consumer needs to know ABOUT a record that is not written in the record: its kind,
+ *  whether the export contract binds it, and its gist. Decided once, here, so no reader has to
+ *  re-derive it — a second copy of this rule in a renderer is exactly what eng:namespace-names-kind caught. */
+export const decorate = (rec, moduleByName, mx, rx) => ({
+  ...rec,
+  kind: kindOf(rec.id),
+  moduleScoped: isModuleScoped(rec.id, moduleByName),
+  gist: gistOf(rec),
+  // WHICH PRODUCT this serves, when a root index is at hand. Same argument as the export contract
+  // above: the walk up the refinement chain (and the hive collapse in it) is the store's rule, so
+  // it travels with the record rather than being re-walked by every reader.
+  ...(rx ? { rootStory: rx.byRecord.get(rec.id) ?? null, rootScope: rx.scopeOf(rec) } : {}),
+  // A model's CONSUMERS travel with the record: which trees reach it, and through which records.
+  // A renderer that worked that out from the edge list itself would be a second copy of the rule,
+  // which is the defect eng:namespace-names-kind exists to prevent.
+  ...(mx && (kindOf(rec.id) === 'model' || kindOf(rec.id) === 'view') ? {
+    owner: cloudOf(rec) ?? null,
+    importers: mx.importersOf(rec.id),
+    references: mx.refs.filter((r) => r.model === rec.id),
+  } : {}),
+});
+
+/** Everything the graph view draws, derived per request.
+ *
+ *  NODE SIZE IS eng:prominence-follows-dependence APPLIED TO THE LEDGER ITSELF: prominence follows how much depends on a
+ *  fact, never per-screen taste. `inbound` counts the decisions that refine, ground on, or
+ *  consume this one; the radius is sqrt-scaled so a 44-dependent principle stays on screen
+ *  beside a leaf. Nothing here is stored — change an edge and the size changes with it. */
+export function graphData(ctx, { scope = 'all' } = {}) {
+  // A scope is a SUBGRAPH, not a filter on top of the whole one: records outside it are absent,
+  // so their edges simply do not exist here and the inbound counts (and therefore the radii)
+  // describe the picture actually on screen.
+  const keep = SCOPES[scope] ?? SCOPES.all;
+  const records = ctx.records.filter((r) => keep(r, ctx.moduleByName));
+  ctx = { ...ctx, records, byId: new Map(records.map((r) => [r.id, r])) };
+  const g = graphOf(ctx);
+  const mx = modelIndex(ctx);
+  // The root index is built on the SCOPED corpus for the same reason the inbound counts are: what
+  // the chips offer must describe the picture actually on screen. A scope that contains no story
+  // yields no roots, and the chip row simply is not there.
+  const rx = rootStoryIndex(ctx);
+  // Every dependent counts ONCE. The model layer used to add its module's declared imports on top
+  // of the record edges; with the declarations retired there is one source of weight left, which
+  // is what eng:prominence-follows-dependence wanted all along — prominence follows what actually depends on the fact.
+  const inboundOf = (id) =>
+    (g.refinedBy.get(id)?.length ?? 0) + (g.groundedOn.get(id)?.length ?? 0) + (g.consumedBy.get(id)?.length ?? 0);
+
+  const nodes = ctx.records.map((rec) => {
+    const inbound = inboundOf(rec.id);
+    const { kind, moduleScoped, gist, rootStory, rootScope } = decorate(rec, ctx.moduleByName, null, rx);
+    return {
+      id: rec.id,
+      kind,
+      moduleScoped,
+      gist,
+      // Every node draws inside its TREE's cloud — the directory it lives in, which is also the
+      // boundary the direction rule binds it to.
+      module: cloudOf(rec) ?? null,
+      owner: cloudOf(rec) ?? null,
+      // A model more than one tree reads is SHARED — the fact the four-roots order exists to make
+      // visible, and what the layout pushes out to the models cloud's rim.
+      ...(kind === 'model' || kind === 'view'
+        ? { importers: mx.importersOf(rec.id), shared: mx.importersOf(rec.id).length > 1 } : {}),
+      domain: domainsOf(rec)[0] ?? null,
+      rootStory, rootScope,
+      principle: isPrinciple(rec.id),
+      // A root here means "something refines this" — the label's weight reads hierarchy
+      // direction off the graph, not off a per-node style choice.
+      root: (g.refinedBy.get(rec.id)?.length ?? 0) > 0,
+      inbound,
+      // A story is an anchor: it is the root sentence a whole branch refines, so it carries a
+      // floor under its radius rather than waiting for dependents to accumulate.
+      radius: Number(Math.max(3 + 2.4 * Math.sqrt(inbound), kind === 'story' ? 9 : 0).toFixed(2)),
+      decision: truncate(rec.decision, 150),
+    };
+  });
+
+  const known = new Set(nodes.map((n) => n.id));
+  const edges = [];
+  const add = (source, target, type) => { if (known.has(target)) edges.push({ source, target, type }); };
+  for (const rec of ctx.records) {
+    if (rec.links?.refines) add(rec.id, rec.links.refines, 'refines');
+    for (const t of groundsOf(rec)) add(rec.id, t, 'grounds');
+    for (const t of consumesOf(rec)) add(rec.id, t, 'consumes');
+    for (const t of tensionsOf(rec)) add(rec.id, tensionTarget(t), 'tension');
+  }
+
+  const modules = ctx.modules
+    .map((m) => ({
+      name: m.name, tree: m.tree ?? null, treeKind: m.kind ?? null,
+      layer: String(m.layer ?? ''), accent: m.accent ?? null, purpose: m.purpose ?? null,
+      // A tree serves one product or it serves all of them — derived from its layer and from the
+      // majority of its own records, never declared anywhere.
+      rootStory: rx.byModule.get(m.name)?.rootStory ?? null,
+      rootScope: rx.byModule.get(m.name)?.shared ? SHARED_SCOPE : (rx.byModule.get(m.name)?.rootStory ?? SHARED_SCOPE),
+      shared: rx.byModule.get(m.name)?.shared ?? true,
+      count: nodes.filter((n) => n.module === m.name).length,
+    }))
+    .filter((m) => m.count);
+
+  // The reference edge from a CLOUD to a model has no node at its cloud end — a tree is a crowd,
+  // not a dot. It is drawn and sprung against that cloud's EMERGENT CENTROID, which is what makes
+  // the boundary reveal itself: a model every product reads gets pulled out of the models root's
+  // middle and comes to rest facing its consumers. Kept out of `edges` because every edge there
+  // lands on two nodes; this one lands on a node and a crowd. DERIVED from the record edges now —
+  // there is no declared import list left to read.
+  const inScope = new Set(modules.map((m) => m.name));
+  const pairs = new Map();
+  for (const r of mx.refs) {
+    if (known.has(r.model) && inScope.has(r.from)) pairs.set(`${r.from} → ${r.model}`, { module: r.from, model: r.model });
+  }
+  const imports = [...pairs.values()];
+  const seen = new Set(nodes.map((n) => n.rootScope));
+  const roots = rx.summary
+    .map((r) => ({ ...r, count: nodes.filter((n) => n.rootScope === r.id).length }))
+    .filter((r) => seen.has(r.id));
+  return {
+    scope, nodes, edges, modules, imports, roots,
+    shared: nodes.filter((n) => n.rootScope === SHARED_SCOPE).length,
+    physics: EDGE_PHYSICS, importPhysics: IMPORT_PHYSICS,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Module coherence
+// ---------------------------------------------------------------------------
+
+/** A tree has to hold together on its own: walk each one using ONLY the edges between its own
+ *  records and see whether it is one piece. More than one piece means either the placement is
+ *  wrong or — the more interesting case — there is a real relationship nobody has modelled,
+ *  because two decisions that live in the same tree and never reference each other are usually two
+ *  decisions with an undeclared edge between them. This is what feeds `linkSuggestions`, which
+ *  proposes the missing edge.
+ *
+ *  A finding, never a failure: this reports, the rail shows it, nothing exits non-zero. */
+export function moduleCoherence({ records }) {
+  const byModule = new Map();
+  for (const rec of records) {
+    const m = moduleOf(rec);
+    // Two known artifacts are left out, or they would bury every real finding. PRINCIPLES are
+    // roots: cited from everywhere and never linked to one another, so one piece each by
+    // construction (the retired store made the same exclusion, as a `principles` pseudo-module).
+    // The MODELS root is FLAT by design — a model is a contract with no decision tree beneath it —
+    // so "43 records in 36 pieces" is the shape working, not a hole in it.
+    if (!m || m === 'principles' || m === 'models' || isPrinciple(rec.id)) continue;
+    byModule.set(m, [...(byModule.get(m) ?? []), rec]);
+  }
+
+  const report = [];
+  for (const [module, members] of [...byModule].sort()) {
+    const ids = new Set(members.map((r) => r.id));
+    const adj = new Map(members.map((r) => [r.id, new Set()]));
+    const link = (a, b) => { if (ids.has(b)) { adj.get(a).add(b); adj.get(b).add(a); } };
+    for (const rec of members) {
+      if (rec.links?.refines) link(rec.id, rec.links.refines);
+      for (const t of groundsOf(rec)) link(rec.id, t);
+      for (const t of consumesOf(rec)) link(rec.id, t);
+      for (const t of tensionsOf(rec)) link(rec.id, tensionTarget(t));
+    }
+    const seen = new Set();
+    const components = [];
+    for (const rec of members) {
+      if (seen.has(rec.id)) continue;
+      const comp = [];
+      const queue = [rec.id];
+      seen.add(rec.id);
+      while (queue.length) {
+        const cur = queue.shift();
+        comp.push(cur);
+        for (const nxt of adj.get(cur)) if (!seen.has(nxt)) { seen.add(nxt); queue.push(nxt); }
+      }
+      components.push(comp.sort());
+    }
+    components.sort((a, b) => b.length - a.length);
+    report.push({
+      module, size: members.length, components: components.length,
+      largest: components[0]?.length ?? 0,
+      stranded: components.slice(1).map((c) => c),
+      allComponents: components,
+    });
+  }
+  return report;
+}
+
+// ---------------------------------------------------------------------------
+// INCOHERENCE — everything the store can complain about, in one derived report
+//
+// The question the explorer exists to answer is WHERE IS THE INCOHERENCE, and the answer has four
+// shapes: a module that does not hold together, a gap nobody has decided yet, a boundary whose
+// declaration and whose traffic disagree, and two decisions that are plainly about the same thing
+// with no link between them. All four are computed HERE and served as data — the renderer places
+// and colours them, it never decides what counts as a finding.
+// ---------------------------------------------------------------------------
+
+/** Words that carry no aboutness. Kept deliberately short: the document-frequency filter below is
+ *  the real mechanism (a word in more than a few percent of the ledger is not evidence of anything),
+ *  and a long hand-written stoplist would be a second, staler copy of that same judgement. */
+const STOPWORDS = new Set([
+  'that', 'this', 'with', 'from', 'they', 'them', 'then', 'than', 'have', 'been', 'were', 'will',
+  'what', 'when', 'which', 'while', 'into', 'onto', 'over', 'under', 'only', 'ever', 'never',
+  'every', 'each', 'both', 'more', 'most', 'less', 'least', 'same', 'other', 'another', 'some',
+  'such', 'because', 'about', 'after', 'before', 'again', 'once', 'also', 'must', 'never', 'does',
+  'never', 'cannot', 'would', 'could', 'should', 'there', 'their', 'thing', 'things', 'rather',
+  'instead', 'whole', 'part', 'kind', 'make', 'makes', 'made', 'take', 'takes', 'even', 'ones',
+]);
+
+/** A record's vocabulary: the significant words of its statement — what it actually says. */
+export function termsOf(rec) {
+  const terms = new Set();
+  for (const w of String(rec.decision ?? '').toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? []) {
+    if (!STOPWORDS.has(w)) terms.add(w);
+  }
+  return terms;
+}
+
+/** How common a term may be before it stops being evidence. 8% of the ledger: at 512 records a
+ *  term in more than ~41 of them ("audition", "company", "user") is the subject matter, not a
+ *  shared subject. Without this filter every pair in the store shares two words and the whole
+ *  suggestion list is noise — the filter IS the feature. */
+export const RARE_DF_CEILING = 0.08;
+/** Two shared rare terms. One is a coincidence; two is a topic. */
+export const SUGGESTION_MIN_SHARED = 2;
+
+/** Document frequency across the WHOLE store — a term's rarity is a fact about the ledger, never
+ *  about the module being examined, or a module with one vocabulary would rate its own jargon rare
+ *  in the places it is most common. */
+export function termFrequency(records) {
+  const df = new Map();
+  for (const rec of records) for (const t of termsOf(rec)) df.set(t, (df.get(t) ?? 0) + 1);
+  return df;
+}
+
+/** Pairs of same-module records with NO path between them inside the module, sharing rare
+ *  vocabulary. These are the candidate edges that would close a module-incoherence warning: the
+ *  coherence check says two pieces exist, this says which two records look like the missing link.
+ *
+ *  A SUGGESTION, never a finding: the tool proposes the edge, a person decides whether the
+ *  relationship is real and which typed link it is. */
+export function linkSuggestions({ records = [] } = {}, { minShared = SUGGESTION_MIN_SHARED, dfCeiling = RARE_DF_CEILING } = {}) {
+  const df = termFrequency(records);
+  const ceiling = dfCeiling * records.length;
+  const byId = new Map(records.map((r) => [r.id, r]));
+  const rare = new Map();
+  for (const rec of records) {
+    rare.set(rec.id, new Set([...termsOf(rec)].filter((t) => (df.get(t) ?? 0) <= ceiling)));
+  }
+
+  const out = [];
+  for (const m of moduleCoherence({ records })) {
+    if (m.components <= 1) continue;
+    const comps = m.allComponents ?? [];
+    // Only ACROSS components: two records already joined by a path inside the module need no
+    // suggestion — whatever relationship they have is modelled.
+    for (let i = 0; i < comps.length; i++) {
+      for (let j = i + 1; j < comps.length; j++) {
+        for (const a of comps[i]) {
+          for (const b of comps[j]) {
+            const shared = [...(rare.get(a) ?? [])].filter((t) => rare.get(b)?.has(t)).sort();
+            if (shared.length < minShared) continue;
+            out.push({
+              kind: 'suggestion', module: m.module, a, b, shared,
+              score: shared.length,
+              gistA: gistOf(byId.get(a) ?? { id: a }), gistB: gistOf(byId.get(b) ?? { id: b }),
+            });
+          }
+        }
+      }
+    }
+  }
+  return out.sort((x, y) => y.score - x.score || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+}
+
+/** RETIRED with the module files: `seams()` — the three ways a DECLARED module boundary could
+ *  disagree with the traffic over it (an undeclared import, an import nothing exercised, an export
+ *  nobody imported). All three compared a declaration against the edges; with the declarations
+ *  gone there is only traffic, and the question 'may this edge cross?' belongs to the direction
+ *  rule, which asks it of the filesystem's boundaries instead of a file's claims.
+ *
+ *  What the rail draws in their place: every edge the ONE-WAY rule forbids, grandfathered or new.
+ *  The same shape — a line between two trees that the structure says should not be there. */
+export function crossings({ records = [], byId = new Map() } = {}) {
+  return directionViolations({ records, byId }).sort((a, b) =>
+    a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.id.localeCompare(b.id));
+}
+
+/** Decision ids a free-text event mentions. A gap names no decision by definition (that is what
+ *  makes it a gap), but its note says what it was found next to — and those citations are the only
+ *  thing that can place it on the map. Extracted by matching id SHAPES and keeping the ones the
+ *  store actually has, so a prose mention of "cast:shareable-cast-list-graphic" resolves and "V150" does not. */
+export function citedIds(text, byId) {
+  const out = [];
+  // The tail takes hyphens. It did not, and the cost was silent: every reserved-kind id is
+  // hyphenated (`model:audition-listing`, `principle:weigh-disruption`), so the pattern stopped
+  // at the first hyphen, produced `model:audition`, found nothing in the store, and dropped it.
+  // 44 of 532 ids — every model and most principles — could not be cited from prose at all, and
+  // nothing reported it: the function's whole contract is to return fewer ids than it sees.
+  for (const m of String(text ?? '').match(/\b[A-Za-z][A-Za-z0-9-]*[:-][A-Za-z0-9][A-Za-z0-9-]*/g) ?? []) {
+    // Then back off one hyphenated segment at a time, so a citation with prose fused onto it
+    // ("model:audition-listing-shaped") still resolves to the id underneath.
+    for (let id = m.replace(/[-.,;:)]+$/, ''); id.includes('-') || id.includes(':');
+         id = id.slice(0, id.lastIndexOf('-'))) {
+      if (byId.has(id)) {
+        if (!out.includes(id)) out.push(id);
+        break;
+      }
+      if (!id.includes('-')) break;
+    }
+  }
+  return out;
+}
+
+/** OPEN gaps: a gap event that no decision has closed. A gap is precisely the event with no
+ *  decision to name (validate says so), so naming one afterwards is how a gap records that it was
+ *  answered — an event that names the decision it produced is closed, everything else is open.
+ *  Each gap is placed by the modules of the decisions its text cites; a gap that cites nothing
+ *  floats free, which is itself worth seeing. */
+export function openGaps({ interactions = [], byId = new Map() } = {}) {
+  return interactions
+    .filter((e) => e.kind === 'gap' && !(e.decisions ?? []).length)
+    .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+    .map((e, i) => {
+      const cites = citedIds(`${e.note ?? ''} ${e.where ?? ''} ${e.src ?? ''}`, byId);
+      const tally = new Map();
+      for (const id of cites) {
+        const mod = cloudOf(byId.get(id) ?? {});
+        if (mod) tally.set(mod, (tally.get(mod) ?? 0) + 1);
+      }
+      const ranked = [...tally].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      return {
+        kind: 'gap',
+        // A gap has no record and therefore no id of its own; this one is derived so the rail, the
+        // ghost and the camera all name the same thing.
+        id: `gap:${e.ts ?? 0}:${i}`, key: `gap:${e.ts ?? 0}:${i}`,
+        ts: e.ts ?? null, note: e.note ?? '', where: e.where ?? '', src: e.src ?? '',
+        cites, module: ranked[0]?.[0] ?? null,
+      };
+    });
+}
+
+/** THE RAIL. Every complaint the store can make, ranked, each one carrying what the camera should
+ *  fly to. Ranking is by how load-bearing the complaint is, not by how many of each there are: a
+ *  broken boundary contract is a defect, an adrift record is a modelling hole, a gap is a decision
+ *  nobody has made, and a suggestion is a proposal. Within a class, the bigger evidence first. */
+export function incoherence(ctx) {
+  const { records, byId } = ctx;
+  const entries = [];
+  const cross = crossings(ctx);
+
+  for (const c of cross) {
+    entries.push({
+      ...c, kind: 'crossing', id: `crossing:${c.id}:${c.type}:${c.target}`, rank: 0,
+      via: c.id, module: cloudOfTree(c.from),
+      title: `${cloudOfTree(c.from)} → ${cloudOfTree(c.to)}`,
+      detail: `${c.id} ${c.type} ${c.target}: ${c.from} may reference ${legalTargets(c.from)}` +
+        (c.grandfathered ? ' — grandfathered by the baseline, and still a boundary nobody has drawn' : ''),
+      focus: [c.id, c.target], bodies: [cloudOfTree(c.from), cloudOfTree(c.to)],
+    });
+  }
+
+  const coherence = moduleCoherence({ records });
+  for (const m of coherence) {
+    if (m.components <= 1) continue;
+    const adrift = m.stranded.flat();
+    entries.push({
+      kind: 'adrift', id: `adrift:${m.module}`, module: m.module, rank: 1,
+      count: adrift.length,
+      title: `${m.module} — ${m.components} pieces`,
+      detail: `${m.size} records, ${m.largest} connected. Adrift: ${adrift.join(', ')}`,
+      focus: adrift, bodies: [m.module], ids: adrift,
+    });
+  }
+
+  for (const g of openGaps(ctx)) {
+    entries.push({
+      ...g, id: g.key, rank: 2,
+      title: g.where || 'open gap',
+      detail: g.note,
+      focus: g.cites, bodies: [g.module].filter(Boolean),
+    });
+  }
+
+  const suggestions = linkSuggestions(ctx);
+  for (const s of suggestions) {
+    entries.push({
+      ...s, id: `suggestion:${s.a}:${s.b}`, rank: 4,
+      title: `${s.a} ↔ ${s.b}`,
+      detail: `share: ${s.shared.join(', ')}`,
+      focus: [s.a, s.b], bodies: [s.module],
+    });
+  }
+
+  // Which NODES are anomalous, and why — one map the renderer reads to glow them at every zoom,
+  // rather than four lookups it would have to keep in step.
+  const anomalies = {};
+  const flag = (id, why) => { if (id) (anomalies[id] ??= []).includes(why) || anomalies[id].push(why); };
+  for (const e of entries) {
+    if (e.kind === 'adrift') for (const id of e.ids) flag(id, 'adrift');
+    if (e.kind === 'suggestion') { flag(e.a, 'suggestion'); flag(e.b, 'suggestion'); }
+  }
+  for (const c of cross) { flag(c.id, 'crossing'); flag(c.target, 'crossing'); }
+
+  // Per SYSTEM, so a star-map body can wear a badge without the renderer counting anything.
+  const byModule = {};
+  const bump = (mod) => { if (mod) byModule[mod] = (byModule[mod] ?? 0) + 1; };
+  for (const [id, why] of Object.entries(anomalies)) bump(cloudOf(byId.get(id) ?? {}));
+  for (const g of openGaps(ctx)) bump(g.module);
+
+  entries.sort((a, b) => a.rank - b.rank
+    || (b.count ?? b.score ?? b.via?.length ?? 0) - (a.count ?? a.score ?? a.via?.length ?? 0)
+    || String(a.id).localeCompare(String(b.id)));
+
+  return {
+    entries,
+    anomalies,
+    byModule,
+    gaps: openGaps(ctx),
+    crossings: cross,
+    suggestions,
+    counts: {
+      total: entries.length,
+      adrift: entries.filter((e) => e.kind === 'adrift').length,
+      gaps: entries.filter((e) => e.kind === 'gap').length,
+      crossings: cross.length,
+      suggestions: suggestions.length,
+      anomalousNodes: Object.keys(anomalies).length,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The walked views — the hierarchy, the capability explorer, and the ERD
+// ---------------------------------------------------------------------------
+
+/** The shell is `ui.html`; the walked views' own script and stylesheet live beside it in `ui/`. */
+export const UI_DIR = path.join(import.meta.dirname, 'ui');
+/** The only file types this server hands out. Not a guess at a type — a list of what it serves. */
+export const UI_MIME = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+
+/** Resolve a `/ui/...` request to a file, or to null. Two rules, both of which must hold: the
+ *  resolved path is INSIDE `ui/` (whatever `..` the request spelled, however it spelled it), and
+ *  its extension is one this server serves. It lives here, not inline in the route, because a
+ *  containment check that only the network can reach is a check no test can prove — and the
+ *  URL parser normalises most traversals away before a route ever sees them, which is exactly how
+ *  an unguarded one survives review. */
+export function resolveUiAsset(urlPath, { dir = UI_DIR } = {}) {
+  if (!urlPath.startsWith('/ui/')) return null;
+  let rest;
+  try {
+    rest = decodeURIComponent(urlPath.slice('/ui/'.length));
+  } catch {
+    return null;                                   // a malformed escape is not a file name
+  }
+  const file = path.resolve(dir, rest);
+  if (file !== dir && !file.startsWith(dir + path.sep)) return null;
+  if (!UI_MIME[path.extname(file)]) return null;
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return null;
+  return { file, type: UI_MIME[path.extname(file)] };
+}
+
+/** Reading order for the roots. Not alphabetical and not arbitrary: it is the DIRECTION RULE's own
+ *  order, so walking the tree top to bottom walks reference downhill — a product may reach a
+ *  capability, which may reach a model, which answers to engineering. */
+export const ROOT_ORDER = ['product', 'capabilities', 'models', 'engineering'];
+
+/** The CAPABILITIES a record leverages: the capability trees its own outbound edges land in. This
+ *  is the product overlay's whole rule — "where is this capability used?" answered from traffic,
+ *  never from a list somebody maintains. A record inside a capability does not leverage itself. */
+export function capabilitiesReached(rec, byId) {
+  const own = capabilityOfTree(rec._tree ?? '');
+  const out = new Set();
+  for (const [, target] of outboundEdges(rec)) {
+    const cap = capabilityOfTree(byId.get(target)?._tree ?? '');
+    if (cap && cap !== own) out.add(cap);
+  }
+  return [...out].sort();
+}
+
+/** THE TREE, as the filesystem has it: four roots, one group per capability and per app, and every
+ *  record nested under the record whose folder it lives in. Nothing here is a second hierarchy —
+ *  `_nestedUnder` is the path, which is also what `refines` says, which is the point of the store's
+ *  shape. Each record carries the capabilities it leverages, so the overlay is a field on the node
+ *  rather than a lookup the renderer performs. */
+export function treeIndex(ctx) {
+  const { records, byId, moduleByName = new Map() } = ctx;
+  const placed = records.filter((r) => r._rel);
+  const meta = (tree) => [...moduleByName.values()].find((m) => m.tree === tree) ?? null;
+
+  const nodes = new Map(placed.map((rec) => [rec.id, {
+    kind: 'record',
+    id: rec.id,
+    recordKind: kindOf(rec.id),
+    gist: gistOf(rec),
+    statement: firstLine(rec.decision ?? ''),
+    tree: rec._tree ?? null,
+    rel: rec._rel,
+    capabilities: capabilitiesReached(rec, byId),
+    children: [],
+    count: 1,
+  }]));
+
+  const tops = [];
+  for (const rec of placed) {
+    const parent = rec._nestedUnder ? nodes.get(rec._nestedUnder) : null;
+    (parent ? parent.children : tops).push(nodes.get(rec.id));
+  }
+  // One walk settles both the child order and the subtree sizes the folder rows show.
+  const settle = (n) => {
+    n.children.sort((a, b) => a.id.localeCompare(b.id));
+    n.count = 1 + n.children.reduce((sum, c) => sum + settle(c), 0);
+    return n.count;
+  };
+  for (const n of tops) settle(n);
+
+  const byTree = new Map();
+  for (const n of tops) byTree.set(n.tree, [...(byTree.get(n.tree) ?? []), n]);
+  const group = (tree, label) => {
+    const children = (byTree.get(tree) ?? []).sort((a, b) => a.id.localeCompare(b.id));
+    const m = meta(tree);
+    return {
+      kind: 'group', key: tree, label, tree,
+      accent: m?.accent ?? null, purpose: m?.purpose ?? null, treeKind: m?.kind ?? null,
+      children, count: children.reduce((sum, c) => sum + c.count, 0),
+    };
+  };
+
+  const roots = [];
+  for (const root of ROOT_ORDER) {
+    if (root === 'capabilities' || root === 'product') {
+      const names = [...new Set(placed.filter((r) => r._tree?.startsWith(`${root}/`)).map((r) => r._tree))].sort();
+      // A capability that published a contract but holds no record yet is still a tree; showing it
+      // empty is what makes that state visible instead of silently skipping it.
+      if (root === 'capabilities') for (const name of ctx.contracts?.keys() ?? []) names.push(`capabilities/${name}`);
+      const children = [...new Set(names)].sort()
+        .map((tree) => group(tree, cloudOfTree(tree)));
+      if (!children.length) continue;
+      roots.push({
+        kind: 'root', key: root, label: root, tree: null, children,
+        count: children.reduce((sum, c) => sum + c.count, 0),
+      });
+    } else {
+      const g = group(root, root);
+      if (!g.children.length) continue;
+      roots.push({ ...g, kind: 'root', key: root });
+    }
+  }
+
+  const capabilities = roots.find((r) => r.key === 'capabilities')?.children.map((c) => c.label) ?? [];
+  return { roots, capabilities, records: placed.length };
+}
+
+/** THE CAPABILITY EXPLORER's data: per capability, the contract consumers buy into, the size of its
+ *  own tree, every record OUTSIDE it that reaches in (grouped by the tree that reaches), and its
+ *  library dependencies both ways. Consumers are derived from edges, so a capability cannot
+ *  advertise a consumer it does not have, nor hide one it does. */
+export function capabilityIndex(ctx) {
+  const { records, contracts = new Map() } = ctx;
+  const names = new Set(contracts.keys());
+  for (const r of records) {
+    const c = capabilityOfTree(r._tree ?? '');
+    if (c) names.add(c);
+  }
+  const deps = capabilityDependencies(ctx);
+  const usedBy = new Map();
+  for (const [from, m] of deps) {
+    for (const [to, why] of m) usedBy.set(to, [...(usedBy.get(to) ?? []), { name: from, why }]);
+  }
+
+  return [...names].sort().map((name) => {
+    const tree = `capabilities/${name}`;
+    const own = records.filter((r) => r._tree === tree);
+    const ownIds = new Set(own.map((r) => r.id));
+    const consumers = [];
+    for (const rec of records) {
+      if (rec._tree === tree) continue;
+      for (const [type, target] of outboundEdges(rec)) {
+        if (!ownIds.has(target)) continue;
+        consumers.push({
+          id: rec.id, tree: rec._tree ?? null, cloud: cloudOf(rec) ?? null,
+          type, target, gist: gistOf(rec), statement: firstLine(rec.decision ?? ''),
+        });
+      }
+    }
+    const grouped = new Map();
+    for (const c of consumers) grouped.set(c.tree, [...(grouped.get(c.tree) ?? []), c]);
+
+    return {
+      name, tree,
+      contract: contracts.get(name) ?? null,
+      records: own.length,
+      consumerCount: new Set(consumers.map((c) => c.id)).size,
+      consumers,
+      consumersByTree: [...grouped]
+        .map(([t, rows]) => ({ tree: t, cloud: cloudOfTree(t ?? '—'), records: rows }))
+        .sort((a, b) => b.records.length - a.records.length || String(a.tree).localeCompare(String(b.tree))),
+      uses: [...(deps.get(name) ?? new Map())].map(([to, why]) => ({ name: to, why })).sort((a, b) => a.name.localeCompare(b.name)),
+      usedBy: (usedBy.get(name) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The schema the ERD draws its fields from
+// ---------------------------------------------------------------------------
+
+/** `tools/adroit/schema.json` — the columns the migrations produce, derived by
+ *  `tools/adroit/schema-dump.mjs` and COMMITTED, so viewing the ERD needs no Java. Absent is a
+ *  legitimate state (a fresh checkout that has not run the dump): the ERD then draws its boxes
+ *  with no fields and says so. Malformed is NOT legitimate and throws, because a half-read schema
+ *  would quietly draw half a model. */
+export const SCHEMA_FILE = path.join(import.meta.dirname, 'schema.json');
+export function loadSchema({ file = SCHEMA_FILE } = {}) {
+  if (!fs.existsSync(file)) return null;
+  const raw = fs.readFileSync(file, 'utf8');
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`${path.relative(ROOT, file)}: ${e.message} — regenerate with node tools/adroit/schema-dump.mjs`);
+  }
+}
+
+/** THE ERD: one entity per model and view, its fields taken from the real schema through the
+ *  record's own table mapping, and the edges between them. The mapping is looked up
+ *  case-insensitively — a table's spelling is the migration's business, not the ledger's — and a
+ *  name the schema does not have comes back marked rather than dropped, because a mapping that
+ *  stopped matching is exactly the thing worth seeing. */
+export function erdData(ctx, schema) {
+  const mx = modelIndex(ctx);
+  const tables = schema?.tables ?? {};
+  const spelling = new Map(Object.keys(tables).map((t) => [t.toLowerCase(), t]));
+
+  const entities = mx.models.map((rec) => {
+    const kind = kindOf(rec.id);
+    const mapped = tablesOf(rec).map((declared) => {
+      const real = spelling.get(declared.toLowerCase());
+      return { table: real ?? declared, found: Boolean(real), columns: real ? tables[real] : [] };
+    });
+    return {
+      id: rec.id,
+      kind,
+      name: rec.id.slice(rec.id.indexOf(':') + 1),
+      gist: gistOf(rec),
+      statement: firstLine(rec.decision ?? ''),
+      tables: mapped,
+      fields: mapped.reduce((n, t) => n + t.columns.length, 0),
+      unmapped: mapped.filter((t) => !t.found).map((t) => t.table),
+      // A view derives over models and owns no table; what it publishes is what its statement
+      // declares. Two different kinds of "fields", never conflated into one list.
+      derivations: kind === 'view' ? declaredDerivations(rec) : [],
+      consumers: mx.importersOf(rec.id),
+    };
+  }).sort((a, b) => a.id.localeCompare(b.id));
+
+  const known = new Set(entities.map((e) => e.id));
+  const edges = [];
+  for (const rec of mx.models) {
+    for (const [type, target] of outboundEdges(rec)) {
+      if (known.has(target)) edges.push({ source: rec.id, target, type });
+    }
+  }
+
+  const tableNames = Object.keys(tables);
+  const claimed = new Set(entities.flatMap((e) => e.tables.filter((t) => t.found).map((t) => t.table)));
+  return {
+    entities,
+    edges,
+    schema: {
+      present: Boolean(schema),
+      migrations: schema?.migrations ?? 0,
+      highWater: schema?.highWater ?? 0,
+      tables: tableNames.length,
+      columns: tableNames.reduce((n, t) => n + tables[t].length, 0),
+      // Tables no model claims: the honest other half of the mapping, and the list to read before
+      // believing the model layer covers the database.
+      unclaimed: tableNames.filter((t) => !claimed.has(t)).sort(),
+    },
+  };
+}

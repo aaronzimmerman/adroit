@@ -1,0 +1,45 @@
+id: eng:decision-per-file
+decision: >-
+  Each decision is its own file in the ledger tree, and a record's fields are id, decision,
+  rejected, links and context — nothing records a status or search keywords. The CORE is the rule,
+  its typed links and its REJECTED alternatives — required structure, so an empty rejected list is
+  visible; the CONTEXT block (rationale, provenance, revisions) is never load-bearing. Exploration
+  happens only in a derived graph the tooling rebuilds from the
+  files; the files exist for git — diff, merge, blame, and review, with an ID claim being a file
+  path so parallel claims are merge conflicts git refuses to hide.
+rejected:
+  - one appended ledger file (line merges hide ID collisions and every session edits the same file)
+  - a binary database as the canonical store (unmergeable, undiffable)
+  - >-
+    a status field on every record — superseded records are deleted, not marked, so it could only
+    ever hold one value; a field that cannot vary states nothing
+  - >-
+    curated search tokens on every record — they duplicated what the id, decision and rejected text
+    already say, fed only a related-by-token panel and a search filter, and were one more field to
+    write and keep in step
+  - >-
+    an api flag on a record (a per-record boolean tag outside the schema) — whatever it marked, a
+    typed link (consumes) or the statement itself carries better, and the boundary it once licensed
+    is now the one-way direction rule
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    user-directed via inbox 006 — context and rationale must ride alongside the decision without
+    being part of it, links must be structured rather than prose, and the quality bar (name what you
+    rejected) becomes schema instead of taste; revised 2026-09-28 by the user to simplify and
+    streamline the schema to the fields that carry the decision
+  src: decisions/inbox/006-ledger-directory.md; session 2026-09-22; schema slimming 2026-09-28
+  area: platform
+  revision: >-
+    four-roots (2026-09-24): "one root ledger directory" became the tree —
+    adr:hierarchy-is-filesystem carries the hierarchy-as-filesystem rule; the core/context split,
+    required rejected, and path-is-the-claim survive unchanged. Schema slimming (2026-09-28): the
+    status and tokens fields were dropped and the field list became the rule; the check refuses a
+    record carrying either. The same day the api flag went the same way (user 2026-09-28: "we don't
+    need api: true"); the check refuses it too
+  demoted: >-
+    grounded on principle:derive-dont-materialize while this corpus lived in StageDoor's ledger; that principle stayed
+    downstream when the corpus moved upstream (2026-09-28), so the edge demoted to this note
+    (adr:references-flow-one-way — a relationship the direction forbids demotes to context)

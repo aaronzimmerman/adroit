@@ -1,0 +1,21 @@
+id: adr:links-typed-by-relation
+decision: >-
+  A record's references are typed by the relation they assert: refines names its one parent (the
+  path carries it); grounds names a principle the rule rests on; consumes names a capability, model
+  or view whose contract the rule depends on; tension names a principle the rule deliberately
+  diverges from. A principle is a root value judgment, cited only through grounds and never a
+  refinement parent. Classifiers such as the domain label a record; they are not references.
+rejected:
+  - >-
+    untyped "see also" links — impact analysis cannot tell a dependency from a mention, so every
+    link counts as both or neither
+  - >-
+    principles as ordinary refinement parents — a value judgment cited across the whole corpus
+    would become the parent of everything, and the hierarchy would stop saying anything
+links:
+  domain: adr
+context:
+  why: >-
+    the link vocabulary and the principle's place in it are stated in adroit's CLAUDE.md ("The
+    objects") and enforced by the check, with no record holding them
+  src: CLAUDE.md walk, adroit-ledger-upstream migration 2026-09-28

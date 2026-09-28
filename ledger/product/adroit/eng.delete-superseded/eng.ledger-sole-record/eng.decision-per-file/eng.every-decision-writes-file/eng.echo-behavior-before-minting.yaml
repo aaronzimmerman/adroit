@@ -1,0 +1,20 @@
+id: eng:echo-behavior-before-minting
+decision: >-
+  Before a record is written from a user's ruling, the concrete behavior it will produce is restated
+  in the user's own words and confirmed on that restatement — not on the record's wording. The user's
+  words are not the ledger's vocabulary; the confirmation is of what will happen. The forks that most
+  need this are the ones that felt obvious.
+rejected:
+  - >-
+    minting straight from the user's phrasing — translating it into ledger vocabulary silently
+    supplies decisions the user never made, and the record then reads as ruled when it was inferred
+  - >-
+    confirming the drafted record text — the user approves words that sound right and never sees
+    the behavior they commit to
+links:
+  domain: eng
+context:
+  why: >-
+    stated in adroit's CLAUDE.md protocol with no record holding it; learned in StageDoor when a
+    ruling minted in the agent's vocabulary produced behavior the user had not asked for
+  src: CLAUDE.md walk, adroit-ledger-upstream migration 2026-09-28

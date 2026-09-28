@@ -1,0 +1,21 @@
+id: adr:hierarchy-is-filesystem
+decision: >-
+  The refinement hierarchy IS the filesystem: a record is a file named by its id, a record with
+  refinements becomes a folder holding itself and its children, and re-parenting is a file move. A
+  nested record never restates the refines its path carries. References bind to a record’s NAME,
+  never its path, so a move breaks nothing that cites it.
+rejected:
+  - >-
+    refines as a links-block field over one flat directory — every re-parent was an edit inside a
+    file, and the hierarchy was invisible to everything that wasn’t the graph explorer
+  - path-based references — they turn every re-parent into a repo-wide rebind
+links:
+  domain: adr
+context:
+  why: >-
+    the four-roots migration: with the hierarchy in the filesystem the links block mostly
+    evaporates, a re-parent is a git mv the diff shows as a move, and the tree is browsable with no
+    tooling at all
+  src: >-
+    decisions/inbox/009-four-roots-structure.md (landed as PR #41); session 2026-09-23/24; user
+    messages 61-89 verbatim in tasks/082-user-notes.md

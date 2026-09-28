@@ -1,0 +1,49 @@
+id: eng:log-ledger-interactions
+decision: >-
+  The ledger's effectiveness is itself recorded: when a standing decision resolves what would
+  otherwise have been a new decision, prevents a change an agent would have made, or a missing
+  decision is felt mid-work, the working agent logs one interaction event — the decision ids, the
+  kind (resolved-fork | prevented | gap), one line of what happened, and where. The ledger holds
+  decisions only: interaction events are usage telemetry, appended one line each to a
+  machine-local log keyed by the corpus's name (~/.adroit/<corpus>/interactions.jsonl), never
+  inside the corpus and never travelling with a branch. The tooling validates the log line by
+  line when it reads it — a malformed line is reported and skipped, never a failure of the
+  corpus — and an absent log reads as empty. The explorer derives per-decision earned-its-keep
+  counts (the evidence for promoting a decision toward a principle) and the gap list (the
+  missing-decisions worklist) from it. Routine citations are never logged. Events are SIGNALS
+  about the ledger, never a supplement to it: a note is a bare pointer (capped at 200
+  characters), rationale and rulings content live only in the records themselves, and no agent
+  reads events as decision input — the agent dump excludes them by default.
+rejected:
+  - >-
+    logging every routine citation — noise; @DecisionRef bindings and wrap-up reports already carry
+    those
+  - >-
+    automatic instrumentation — nothing can observe the fork that didn't happen; recording is the
+    agent's deliberate act at wrap-up
+  - >-
+    narrative event notes — a diary of rationale grows into a shadow ledger whose prose becomes
+    load-bearing; the ledger must stay the single canonical version of every decision (tally
+    ruling, 2026-09-25)
+  - >-
+    events as committed corpus files (per-session logs inside the ledger directory) — every
+    parallel branch appends to them, so they conflict on every merge; that append conflict was the
+    actual pain
+  - >-
+    one committed file per event — conflict-free, but it floods the tree with usage metadata the
+    user explicitly declined to keep in the corpus
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    user-directed via inbox 007 — the ledger must be an active document refined by evidence: which
+    decisions keep earning their keep, which are missing, measured by the moments the graph changes
+    the stream rather than by citation volume; revised 2026-09-28 (user): "this is metadata about
+    adroit usage, like a log file" — the events moved out of git to a machine-local log
+  src: decisions/inbox/007-interaction-audit.md; session 2026-09-22; interactions-local-log 2026-09-28
+  area: platform
+  demoted: >-
+    grounded on principle:audit-memorialize and principle:derive-dont-materialize while this corpus lived in StageDoor's ledger; that principles stayed
+    downstream when the corpus moved upstream (2026-09-28), so the edge demoted to this note
+    (adr:references-flow-one-way — a relationship the direction forbids demotes to context)

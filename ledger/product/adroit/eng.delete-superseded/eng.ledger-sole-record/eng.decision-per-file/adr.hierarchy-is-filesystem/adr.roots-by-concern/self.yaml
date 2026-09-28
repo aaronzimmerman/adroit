@@ -1,0 +1,32 @@
+id: adr:roots-by-concern
+decision: >-
+  The store is a small set of roots, one per kind of concern: an engineering commons every tree may
+  cite; CAPABILITIES — named, self-contained trees a product buys into; MODELS — flat contracts for
+  data at rest, owned by nobody and citable by everybody; one PRODUCT tree per application, its
+  story at the root. The tool’s own corpus is not a root of any instance: it lives upstream, in
+  the tool’s repository, separate from the instances it governs. Where a record lives determines
+  what it may reference; there is no placement a path cannot express.
+rejected:
+  - >-
+    modules as metadata files beside a flat store — forty declarations whose layers, exports and
+    imports could disagree with the traffic, and did
+  - >-
+    one tree for everything — engineering rules, product choices and reusable machinery answer to
+    different consumers and different disruption tolerances
+links:
+  domain: adr
+context:
+  why: >-
+    at full disruptability the mandate is to consider upending the entire hierarchy for a better
+    organization — this structure is that mandate obeyed (greenfield StageDoor, 14 rulings, zero
+    sideways edges at the end)
+  src: >-
+    decisions/inbox/009-four-roots-structure.md (landed as PR #41); session 2026-09-23/24; user
+    messages 61-89 verbatim in tasks/082-user-notes.md
+  demoted: >-
+    grounded on principle:weigh-disruption while this corpus lived in StageDoor's ledger; that principle stayed
+    downstream when the corpus moved upstream (2026-09-28), so the edge demoted to this note
+    (adr:references-flow-one-way — a relationship the direction forbids demotes to context)
+  revision: >-
+    2026-09-28 (user-directed): the tool's corpus stopped being an instance root when adroit's
+    decisions moved upstream; adr:four-decision-roots states the resulting directory shape
