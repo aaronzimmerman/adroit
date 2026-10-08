@@ -5,6 +5,9 @@
 // @DecisionRef eng:commitments-endure-until-canceled — one atomic entry per id, in exactly
 // three forms: declaration (id + description, severable by default), adherence (id + one
 // line), negation (id + flag).
+// @DecisionGap no record fixes the YAML spelling of a commitment entry; chosen here as
+// {id, description?|adherence?|negation?, severable?} — the smallest shape carrying the
+// ruled attributes.
 export interface CommitmentEntry {
   id: string;
   /** Present on a declaration. */

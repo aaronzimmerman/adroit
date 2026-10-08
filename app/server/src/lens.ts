@@ -111,6 +111,8 @@ export async function citationsFor(
  * How heavily each model field is consumed in fact, measured as name references in the
  * code. The measure names its own axis and limits: it counts textual references
  * (`.field`, `"field"`, `'field'`), not type-checked accesses.
+ * @DecisionGap no record rules the field-usage measurement axis; a name-reference count
+ * with its limits named is the smallest honest measure until one is ruled.
  */
 export function modelFieldUsage(
   repoRoot: string,

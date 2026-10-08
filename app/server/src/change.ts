@@ -427,9 +427,14 @@ export async function applyChange(
   };
 }
 
+// @DecisionGap the change-propose contract births a migration (begin-migration) but
+// offers no landing operation; landing stays outside the UI's write set until ruled.
+
 /**
  * Confirm a record without editing it: one line of provenance into context, committed
  * like any edit, so the review is an auditable act.
+ * @DecisionGap no record names where in context the provenance line lives; chosen as
+ * context.reviewed, latest line wins, git history keeping the earlier reviews.
  * @DecisionRef ui:dubious-derived-not-stored — confirmation clears the label by touching
  * the record through the ordinary write path, never by storing a flag.
  */
