@@ -12,7 +12,7 @@ import { citationsFor, modelFieldUsage, scanCitations } from './lens.js';
 import { searchLedger } from './search.js';
 import { buildSnapshot, type SnapshotOptions } from './snapshot.js';
 
-export interface AppOptions {
+interface AppOptions {
   repoRoot: string;
   ledgerDirName?: string;
   /** Repo-relative directories the code lens reads. */

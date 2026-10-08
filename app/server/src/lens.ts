@@ -10,9 +10,9 @@ import { UNCOMMITTED } from './clock.js';
 
 // Named once (eng:window-named-once): which files the lens reads and how much context a
 // snippet carries.
-export const LENS_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html'];
-export const LENS_SKIP_DIRS = ['node_modules', 'dist', '.git'];
-export const SNIPPET_CONTEXT_LINES = 3;
+const LENS_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html'];
+const LENS_SKIP_DIRS = ['node_modules', 'dist', '.git'];
+const SNIPPET_CONTEXT_LINES = 3;
 
 const REF_RE = /@DecisionRef\s+([a-z][a-z-]*:[a-z][a-z-]*)/g;
 const GAP_RE = /@DecisionGap\s+(.+)/g;

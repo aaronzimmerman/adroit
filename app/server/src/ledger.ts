@@ -60,15 +60,11 @@ export interface ParsedLedger {
 
 // @DecisionRef eng:decision-per-file — the closed field list; the write path refuses a
 // record carrying anything else (status, tokens and api by name).
-export const RECORD_FIELDS = ['id', 'decision', 'rejected', 'links', 'context', 'commitments'];
-export const RESERVED_KINDS = ['principle', 'story', 'model', 'view'];
+const RECORD_FIELDS = ['id', 'decision', 'rejected', 'links', 'context', 'commitments'];
+const RESERVED_KINDS = ['principle', 'story', 'model', 'view'];
 
 export function idToStem(id: string): string {
   return id.replace(':', '.');
-}
-
-export function stemToId(stem: string): string {
-  return stem.replace('.', ':');
 }
 
 function readYamlFile(file: string): unknown {

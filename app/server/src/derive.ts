@@ -219,8 +219,8 @@ export function deriveCommitments(ledger: ParsedLedger): CommitmentDerivation {
 
 // Named once (eng:window-named-once): what counts as "most of a tree under one child",
 // and what a subtree must weigh before concentration is worth surfacing.
-export const SKEW_CONCENTRATION_SHARE = 0.75;
-export const SKEW_MIN_SUBTREE = 8;
+const SKEW_CONCENTRATION_SHARE = 0.75;
+const SKEW_MIN_SUBTREE = 8;
 
 /**
  * @DecisionRef ui:surface-structural-skew — measure where the mass concentrates and where

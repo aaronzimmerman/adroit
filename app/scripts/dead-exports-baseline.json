@@ -1,0 +1,13 @@
+[
+  "server/src/derive.ts:CommitmentDerivation",
+  "server/src/gitfacts.ts:FileCommit",
+  "server/src/gitfacts.ts:WorkingState",
+  "server/src/interactions.ts:InteractionsRead",
+  "server/src/ledger.ts:ParsedModel",
+  "server/src/ledger.ts:ParsedChange",
+  "server/src/ledger.ts:ParsedCapability",
+  "server/src/lens.ts:RawCitation",
+  "server/src/lens.ts:CodeGap",
+  "web/src/map/StarMap.ts:StarMapCallbacks",
+  "web/src/map/layout.ts:Lod"
+]

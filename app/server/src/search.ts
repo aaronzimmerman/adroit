@@ -9,8 +9,8 @@ import { ancestorsOf } from './derive.js';
 import type { ParsedLedger } from './ledger.js';
 
 // Named once (eng:window-named-once): result and snippet bounds for one search.
-export const SEARCH_MAX_HITS = 200;
-export const SNIPPET_RADIUS = 70;
+const SEARCH_MAX_HITS = 200;
+const SNIPPET_RADIUS = 70;
 
 function snippetAround(text: string, index: number, matchLen: number): string {
   const start = Math.max(0, index - SNIPPET_RADIUS);

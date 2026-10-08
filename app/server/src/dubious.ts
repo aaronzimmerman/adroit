@@ -13,14 +13,14 @@ function reportedAt(epoch: number): number {
   return epoch === UNCOMMITTED ? 0 : epoch;
 }
 
-export interface ConsumedTarget {
+interface ConsumedTarget {
   key: string;
   /** Repo-relative path of the thing consumed. */
   repoPath: string;
   kind: 'record' | 'model' | 'contract';
 }
 
-export function resolveConsumed(
+function resolveConsumed(
   ledger: ParsedLedger,
   ledgerPrefix: string,
   target: string,

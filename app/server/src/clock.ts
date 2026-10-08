@@ -1,13 +1,8 @@
 // @DecisionRef eng:explicit-utc-clock — every server-side read of the current date/time
 // goes through these helpers, which name UTC explicitly; nothing reads the machine zone.
 
-/** Current moment as epoch seconds (zone-free instant). */
-export function nowEpochSeconds(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
 /** Current date-time as an explicit-UTC ISO string (trailing Z names the zone). */
-export function nowUtcIso(): string {
+function nowUtcIso(): string {
   return new Date().toISOString();
 }
 
