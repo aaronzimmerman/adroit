@@ -1,0 +1,25 @@
+{
+  "name": "adroit-ui",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "app/shared",
+    "app/server",
+    "app/web"
+  ],
+  "scripts": {
+    "clean": "node app/scripts/clean.mjs",
+    "build": "npm run clean && tsc -b app/shared app/server && npm run build -w app/web",
+    "app": "npm run build && node app/server/dist/index.js",
+    "dev": "npm run build:shared && node app/scripts/dev.mjs",
+    "build:shared": "tsc -b app/shared",
+    "test:server": "vitest run --root app/server",
+    "test:web": "vitest run --root app/web",
+    "check:dead": "node app/scripts/dead-exports.mjs",
+    "test": "npm run build && npm run test:server && npm run test:web && npm run check:dead"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}
