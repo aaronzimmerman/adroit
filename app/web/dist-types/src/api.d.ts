@@ -12,21 +12,18 @@ export declare const api: {
         descendants: string[];
         consumers: string[];
         dependents: string[];
+        /** A move's suspects: the moved subtree, the record itself included. */
+        moved: string[];
+        /** Model fields citing this ruling: its migration surface. */
+        modelFields: {
+            model: string;
+            field: string;
+        }[];
     }>;
     change: (req: ChangeRequest) => Promise<ChangeOutcome>;
-    confirm: (id: string, note: string) => Promise<ChangeOutcome>;
     citations: (id: string) => Promise<{
         id: string;
         citations: CodeCitation[];
-        axis: string;
-    }>;
-    modelUsage: (id: string) => Promise<{
-        id: string;
-        usage: {
-            field: string;
-            count: number;
-            files: string[];
-        }[];
         axis: string;
     }>;
 };
