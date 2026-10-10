@@ -129,10 +129,12 @@ body {
   border: 1px solid var(--amber); background: #1d1407; border-radius: 8px;
   padding: 9px 12px; margin-bottom: 10px;
 }
-.dubious-box ul { margin: 5px 0; padding-left: 18px; }
+.dubious-reason { margin: 5px 0; }
 
 .confirm-control { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.confirm-control input { min-width: 240px; }
+.suspect-walk ul { margin: 5px 0; padding-left: 4px; list-style: none; }
+.suspect-walk .rule-text { margin: 2px 0 6px 24px; }
+.land-migration { margin: 4px 0 6px; }
 
 .edit-panel { display: flex; flex-direction: column; gap: 8px; }
 .edit-panel label { display: flex; flex-direction: column; gap: 3px; }
@@ -175,13 +177,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fields-table th { text-align: left; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; padding: 4px 8px; }
 .fields-table td { border-top: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
 .pending-migration { background: rgba(255, 179, 71, 0.06); }
+.orphan-tag { color: var(--pink); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
 .pending-tag { color: var(--amber); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
 .current { color: var(--muted); }
 .intended { color: var(--amber); font-style: normal; }
-.field-usage { margin: 7px 0; }
-.usage-row { display: flex; align-items: center; gap: 9px; margin: 2px 0; }
-.usage-bar { height: 8px; background: linear-gradient(90deg, #3d6bd8, var(--accent)); border-radius: 4px; }
-.unused { color: var(--pink); }
 .model-forms { margin-top: 8px; }
 .model-forms > summary { cursor: pointer; color: var(--muted); }
 .model-forms input, .model-forms select { margin: 3px 0; }

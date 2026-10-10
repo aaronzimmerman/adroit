@@ -18,7 +18,6 @@ function rec(partial: Partial<DerivedRecord> & { id: string }): DerivedRecord {
     subtreeSize: 1,
     effectiveCommitments: [],
     negations: [],
-    dubious: [],
     interactionCount: 0,
     ...partial,
   };
@@ -75,13 +74,13 @@ export function makeSnapshot(): LedgerSnapshot {
       parent: 'app:parent-rule',
       depth: 2,
       subtreeSize: 1,
-      dubious: [{ kind: 'ancestor-decision', source: 'app:parent-rule', at: 1760000000 }],
       doc: {
         id: 'app:child-rule',
         decision: 'Children follow the parent rule.',
         rejected: [],
         links: { consumes: ['model:widget'], grounds: ['principle:single-resolver'] },
         context: {},
+        dubious: 'app:parent-rule was edited (decision) and this record depends on it',
       },
       effectiveCommitments: [
         {
@@ -122,8 +121,8 @@ export function makeSnapshot(): LedgerSnapshot {
         id: 'app:deep-leaf',
         decision: 'Deep leaves live beneath the severed zone.',
         rejected: [],
-        links: {},
-        context: {},
+        links: { tension: ['principle:single-resolver'] },
+        context: { why: 'two places hold the leaf rule on purpose' },
       },
       effectiveCommitments: [],
     }),
@@ -220,10 +219,30 @@ export function makeSnapshot(): LedgerSnapshot {
           size: 'scalar — size in millimeters',
         },
         consumers: ['app:child-rule'],
-        dubious: [],
+        fieldLinks: { name: ['app:parent-rule'], size: [] },
+        orphanFields: ['size'],
+        danglingCitations: [],
       },
     ],
-    changes: [],
+    changes: [
+      {
+        path: 'models/pending-changes/widget-name.yaml',
+        doc: {
+          name: 'widget-name',
+          model: 'model:widget',
+          origin: ['app:parent-rule'],
+          operations: [
+            {
+              field: 'name',
+              op: 'change',
+              current: 'scalar — the widget name (app:parent-rule)',
+              intended: 'scalar — the widget display name',
+            },
+          ],
+          state: 'in-flight',
+        },
+      },
+    ],
     capabilities: [
       {
         name: 'notify',
@@ -250,5 +269,9 @@ export function makeSnapshot(): LedgerSnapshot {
     ],
     incoherences: [],
     workingDiff: [],
+    gaps: [
+      { ids: ['app:deep-leaf'], kind: 'gap', note: 'no record says how deep leaves sort', where: 'map' },
+    ],
+    interactionsSkipped: 1,
   };
 }

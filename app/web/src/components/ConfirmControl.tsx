@@ -3,8 +3,8 @@ import { api, ApiRefusal } from '../api.js';
 
 // @DecisionRef eng:same-operation-same-control — confirming a suspect is one shared
 // control wherever it appears (overlay, suspects walk).
-// @DecisionRef ui:dubious-derived-not-stored — a confirmation writes one line of
-// provenance into the record's context, committed like any edit.
+// @DecisionRef ui:dubious-is-recorded — confirming removes the dubious field and commits
+// that removal, through the ordinary edit-field write path.
 export function ConfirmControl({
   id,
   onDone,
@@ -12,15 +12,18 @@ export function ConfirmControl({
   id: string;
   onDone: (message: string) => void;
 }) {
-  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // @DecisionRef eng:one-step-reversible — a non-destructive, reversible act: one step.
   const confirm = async () => {
     setBusy(true);
     setError(null);
     try {
-      const outcome = await api.confirm(id, note);
+      const outcome = await api.change({
+        operations: [{ op: 'edit-field', id, field: 'dubious', value: null }],
+        message: `confirm ${id}`,
+      });
       onDone(`confirmed ${id} in commit ${outcome.commit?.slice(0, 8) ?? ''}`);
     } catch (e) {
       setError(e instanceof ApiRefusal ? e.message : 'confirmation failed');
@@ -31,12 +34,6 @@ export function ConfirmControl({
 
   return (
     <span className="confirm-control">
-      <input
-        placeholder="one line: why it is still coherent"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        disabled={busy}
-      />
       <button onClick={confirm} disabled={busy}>
         confirm coherent
       </button>

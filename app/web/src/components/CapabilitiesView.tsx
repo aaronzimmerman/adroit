@@ -131,7 +131,8 @@ function CapabilityCard({
               <li key={id}>
                 <button className="link" onClick={() => onOpen(id)}>
                   <code>{id}</code>
-                </button>
+                </button>{' '}
+                {snapshot.records[id] && <DubiousBadge record={snapshot.records[id]} />}
               </li>
             ))}
           </ul>

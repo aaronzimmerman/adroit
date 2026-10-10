@@ -5,15 +5,14 @@
 // @DecisionRef eng:commitments-endure-until-canceled — one atomic entry per id, in exactly
 // three forms: declaration (id + description, severable by default), adherence (id + one
 // line), negation (id + flag).
-// @DecisionGap no record fixes the YAML spelling of a commitment entry; chosen here as
-// {id, description?|adherence?|negation?, severable?} — the smallest shape carrying the
-// ruled attributes.
+// @DecisionRef model:record — the entry spelling is the commitments field's exact text:
+// {id, description, severable: false}, {id, adherence}, or {id, negation: true}.
 export interface CommitmentEntry {
   id: string;
   /** Present on a declaration. */
   description?: string;
-  /** Declaration only; defaults to true when absent. */
-  severable?: boolean;
+  /** Declaration only, and only ever spelled `false` (unseverable); absent = severable. */
+  severable?: false;
   /** Present on an adherence: one line on how this decision plays out under the commitment. */
   adherence?: string;
   /** Present (true) on a negation. */
@@ -28,6 +27,9 @@ export interface RecordDoc {
   links: RecordLinks;
   context: Record<string, unknown>;
   commitments?: CommitmentEntry[];
+  // @DecisionRef ui:dubious-is-recorded — the optional mark: one line saying why the record
+  // is suspect, absent when it is not.
+  dubious?: string;
 }
 
 export interface RecordLinks {
@@ -79,7 +81,7 @@ export interface ContractDoc {
   'not-offered'?: string;
   'blast-radius'?: string;
   /** Declarations incorporated by every consuming root (eng:commitments-endure-until-canceled). */
-  commitments?: { id: string; description: string; severable?: boolean }[];
+  commitments?: { id: string; description: string; severable?: false }[];
   [extra: string]: unknown;
 }
 
@@ -97,14 +99,6 @@ export interface EffectiveCommitment {
   declaredBy: string;
   /** This record's own adherence line, when it wrote one. */
   adherence?: string;
-}
-
-export interface DubiousReason {
-  kind: 'ancestor-decision' | 'moved' | 'consumed-change';
-  /** The ancestor or consumed thing whose change cast the suspicion. */
-  source: string;
-  /** Epoch seconds of the casting change (0 = uncommitted, i.e. now). */
-  at: number;
 }
 
 export interface DerivedRecord {
@@ -125,9 +119,6 @@ export interface DerivedRecord {
   effectiveCommitments: EffectiveCommitment[];
   /** Commitment ids this record negates. */
   negations: string[];
-  // @DecisionRef ui:edits-cast-suspicion — an unworked suspect reads as DUBIOUS wherever it
-  // appears; the reasons say what cast it.
-  dubious: DubiousReason[];
   /** Interaction-log earned-its-keep count (eng:log-ledger-interactions). */
   interactionCount: number;
 }
@@ -136,6 +127,7 @@ export interface DerivedRecord {
 // concentrates without being asked; these are the server-measured signals.
 export interface SkewSignal {
   id: string;
+  /** concentration: most of a subtree under one child; sparse: the tree thins to a thread. */
   kind: 'concentration' | 'sparse';
   /** For concentration: the child holding the mass and its share of the subtree. */
   child?: string;
@@ -162,7 +154,14 @@ export interface DerivedModel {
   /** The pending entries projected onto the deployed fields: the ruled shape. */
   projectedFields: Record<string, string>;
   consumers: string[];
-  dubious: DubiousReason[];
+  // @DecisionRef adr:fields-link-their-rulings — each deployed field's cited ruling ids are
+  // first-class edges; a field citing none is a probable orphan (a report, never a failure).
+  /** Deployed field name -> the record ids its text cites. */
+  fieldLinks: Record<string, string[]>;
+  /** Deployed fields citing no ruling: probable orphans. */
+  orphanFields: string[];
+  /** Cited ids that resolve to nothing in the corpus (principles never dangle). */
+  danglingCitations: { field: string; id: string }[];
 }
 
 export interface DerivedCapability {
@@ -187,6 +186,10 @@ export interface LedgerSnapshot {
   incoherences: CommitmentIncoherence[];
   /** Ledger-relative paths currently differing from HEAD: the in-flight working diff. */
   workingDiff: string[];
+  // @DecisionRef eng:log-ledger-interactions — the gap list (the missing-decisions worklist)
+  // derived from the machine-local log, and how many malformed lines were skipped.
+  gaps: InteractionEvent[];
+  interactionsSkipped: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +202,7 @@ export type Operation =
   | MoveRecordOp
   | SetModelFieldOp
   | BeginMigrationOp
+  | LandMigrationOp
   | PublishContractOp;
 
 export interface CreateRecordOp {
@@ -210,12 +214,26 @@ export interface CreateRecordOp {
 
 // @DecisionRef ui:all-but-id-editable — the editable set is every field but the id;
 // refines is not a field (the path carries it).
-export type EditableField = 'decision' | 'rejected' | 'links' | 'context' | 'commitments';
+export type EditableField =
+  | 'decision'
+  | 'rejected'
+  | 'links'
+  | 'context'
+  | 'commitments'
+  | 'dubious';
+
+// @DecisionRef ui:edits-cast-suspicion — the fields whose edit casts suspicion over the
+// record's dependents; one list, read by the server's write path and the view's walk.
+// @DecisionGap ui:edits-cast-suspicion says "editing a decision" without naming which
+// fields count; chosen: the load-bearing ones, while context (never load-bearing,
+// eng:decision-per-file) and the dubious mark itself cast none.
+export const SUSPICION_FIELDS: readonly EditableField[] = ['decision', 'rejected', 'links', 'commitments'];
 
 export interface EditFieldOp {
   op: 'edit-field';
   id: string;
   field: EditableField;
+  /** For the optional fields (commitments, dubious), null removes the field. */
   value: unknown;
 }
 
@@ -241,6 +259,14 @@ export interface BeginMigrationOp {
   origin: string[];
 }
 
+// @DecisionRef ui:current-and-proposed-visible — landing is the user's attestation that a
+// migration in flight shipped; the model's two states collapse to one in that act.
+export interface LandMigrationOp {
+  op: 'land-migration';
+  /** The model:change's name. */
+  name: string;
+}
+
 export interface PublishContractOp {
   op: 'publish-contract';
   name: string;
@@ -253,6 +279,9 @@ export interface ChangeRequest {
   message?: string;
   /** When false, apply to the working tree without committing (in-flight state). */
   commit?: boolean;
+  // @DecisionRef ui:edits-cast-suspicion — the suspects the user read through and confirmed
+  // during the walk before the commit; the commit marks only the unworked rest.
+  worked?: string[];
 }
 
 // @DecisionRef eng:outcome-honesty — the response reports what actually happened,
@@ -264,6 +293,8 @@ export interface ChangeOutcome {
   touched: string[];
   /** Record ids the change casts suspicion over (ui:edits-cast-suspicion). */
   suspects: string[];
+  /** The suspects this commit marked dubious: the unworked part of the suspect set. */
+  markedDubious: string[];
   /** Populated on refusal: nothing was written (eng:refusal-writes-nothing). */
   refusal?: string;
 }

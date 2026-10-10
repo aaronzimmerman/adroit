@@ -58,9 +58,16 @@ export interface ParsedLedger {
   problems: string[];
 }
 
-// @DecisionRef eng:decision-per-file — the closed field list; the write path refuses a
-// record carrying anything else (status, tokens and api by name).
-const RECORD_FIELDS = ['id', 'decision', 'rejected', 'links', 'context', 'commitments'];
+// @DecisionRef eng:decision-per-file — the closed field list, the optional dubious mark
+// included; the write path refuses a record carrying anything else (status, tokens and api
+// by name).
+const RECORD_FIELDS = ['id', 'decision', 'rejected', 'links', 'context', 'commitments', 'dubious'];
+// @DecisionRef model:record — the exact spelling of each commitment entry form.
+const COMMITMENT_KEYS: Record<'declaration' | 'adherence' | 'negation', string[]> = {
+  declaration: ['id', 'description', 'severable'],
+  adherence: ['id', 'adherence'],
+  negation: ['id', 'negation'],
+};
 const RESERVED_KINDS = ['principle', 'story', 'model', 'view'];
 
 export function idToStem(id: string): string {
@@ -131,6 +138,14 @@ export function validateRecordDoc(
   if (doc.context !== undefined && (typeof doc.context !== 'object' || Array.isArray(doc.context))) {
     problems.push('context must be a mapping when present');
   }
+  // @DecisionRef ui:dubious-is-recorded — present, the mark holds one line of reason.
+  if (doc.dubious !== undefined) {
+    if (typeof doc.dubious !== 'string' || doc.dubious.trim() === '') {
+      problems.push('dubious, when present, holds one line saying why the record is suspect');
+    } else if (/[\r\n]/.test(doc.dubious.trim())) {
+      problems.push('dubious holds one line of reason, not several');
+    }
+  }
   if (doc.commitments !== undefined) {
     if (!Array.isArray(doc.commitments)) {
       problems.push('commitments must be a list when present');
@@ -140,9 +155,22 @@ export function validateRecordDoc(
           problems.push('every commitment entry needs an id');
           continue;
         }
-        if (commitmentEntryKind(entry) === 'invalid') {
+        const kind = commitmentEntryKind(entry);
+        if (kind === 'invalid') {
           problems.push(
-            `commitment entry "${entry.id}" must be exactly one of: declaration (description), adherence, negation`,
+            `commitment entry "${entry.id}" must be exactly one of: declaration (description), adherence, negation: true`,
+          );
+          continue;
+        }
+        const extra = Object.keys(entry).filter((k) => !COMMITMENT_KEYS[kind].includes(k));
+        if (extra.length > 0) {
+          problems.push(
+            `commitment entry "${entry.id}" is a ${kind}, which is spelled {${COMMITMENT_KEYS[kind].join(', ')}} — "${extra.join('", "')}" is not part of it`,
+          );
+        }
+        if (kind === 'declaration' && 'severable' in entry && entry.severable !== false) {
+          problems.push(
+            `commitment "${entry.id}": severable is written only as false, to mark a declaration no descendant may negate`,
           );
         }
       }
@@ -202,6 +230,7 @@ function parseRecordFile(
     ...(docRaw.commitments !== undefined
       ? { commitments: docRaw.commitments as CommitmentEntry[] }
       : {}),
+    ...(typeof docRaw.dubious === 'string' ? { dubious: docRaw.dubious.trim() } : {}),
   };
   const rec: ParsedRecord = {
     id,
@@ -401,6 +430,7 @@ export function recordToYaml(doc: RecordDoc): string {
     decision: doc.decision,
     rejected: doc.rejected,
   };
+  if (doc.dubious !== undefined) ordered.dubious = doc.dubious;
   if (doc.commitments !== undefined) ordered.commitments = doc.commitments;
   ordered.links = doc.links;
   ordered.context = doc.context;

@@ -28,7 +28,16 @@ export const api = {
   search: (q: string) =>
     call<{ query: string; hits: SearchHit[] }>(`/api/search?q=${encodeURIComponent(q)}`),
   impact: (id: string) =>
-    call<{ id: string; descendants: string[]; consumers: string[]; dependents: string[] }>(
+    call<{
+      id: string;
+      descendants: string[];
+      consumers: string[];
+      dependents: string[];
+      /** A move's suspects: the moved subtree, the record itself included. */
+      moved: string[];
+      /** Model fields citing this ruling: its migration surface. */
+      modelFields: { model: string; field: string }[];
+    }>(
       `/api/impact?id=${encodeURIComponent(id)}`,
     ),
   change: (req: ChangeRequest) =>
@@ -37,18 +46,8 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(req),
     }),
-  confirm: (id: string, note: string) =>
-    call<ChangeOutcome>('/api/confirm', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, note }),
-    }),
   citations: (id: string) =>
     call<{ id: string; citations: CodeCitation[]; axis: string }>(
       `/api/lens/citations?id=${encodeURIComponent(id)}`,
-    ),
-  modelUsage: (id: string) =>
-    call<{ id: string; usage: { field: string; count: number; files: string[] }[]; axis: string }>(
-      `/api/lens/model-usage?id=${encodeURIComponent(id)}`,
     ),
 };

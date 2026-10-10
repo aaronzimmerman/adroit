@@ -6,10 +6,10 @@ import {
   consumersByTarget,
   deriveCommitments,
   deriveSkew,
+  modelFieldCitations,
   projectModelFields,
   subtreeSize,
 } from './derive.js';
-import { deriveDubious } from './dubious.js';
 import { GitFacts } from './gitfacts.js';
 import { parseLedger } from './ledger.js';
 import { interactionCounts, interactionsPathFor, readInteractions } from './interactions.js';
@@ -28,7 +28,6 @@ export async function buildSnapshot(
   const git = new GitFacts(repoRoot);
   const consumers = consumersByTarget(ledger);
   const commitments = deriveCommitments(ledger);
-  const dubious = await deriveDubious(ledger, ledgerDirName, git);
   const interactions = readInteractions(
     opts.interactionsFile ?? interactionsPathFor(ledger.corpus),
   );
@@ -49,7 +48,6 @@ export async function buildSnapshot(
       subtreeSize: subtreeSize(ledger, rec.id),
       effectiveCommitments: commitments.effective.get(rec.id) ?? [],
       negations: commitments.negations.get(rec.id) ?? [],
-      dubious: dubious.get(rec.id) ?? [],
       interactionCount: counts.get(rec.id) ?? 0,
     };
   }
@@ -66,7 +64,7 @@ export async function buildSnapshot(
       doc: m.doc,
       projectedFields: projectModelFields(m.doc.fields, [...(m.doc.pending ?? []), ...openOps]),
       consumers: consumers.get(m.id) ?? [],
-      dubious: [],
+      ...modelFieldCitations(ledger, m.doc.fields),
     };
   });
 
@@ -89,5 +87,7 @@ export async function buildSnapshot(
     skew: deriveSkew(ledger),
     incoherences: commitments.incoherences,
     workingDiff: await git.dirtyPaths(ledgerDirName + '/'),
+    gaps: interactions.events.filter((e) => e.kind === 'gap'),
+    interactionsSkipped: interactions.skipped,
   };
 }

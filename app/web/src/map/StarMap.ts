@@ -269,11 +269,11 @@ export class StarMap {
     if (sx < -w * 0.3 || sx > w * 1.3 || sy < -h * 0.3 || sy > h * 1.3) return;
 
     const lod = lodFor(node, rec.children.length > 0, camera.scale);
-    const dubious = rec.dubious.length > 0;
+    const dubious = rec.doc.dubious !== undefined;
     const skew = this.skewByNode.get(id);
 
     if (lod !== 'detail') {
-      // glow — amber wherever the record is dubious (ui:edits-cast-suspicion: the label
+      // glow — amber wherever the record is dubious (ui:dubious-is-recorded: the mark
       // reads visibly wherever the record appears)
       const glowR = Math.min(sr * 2.6, 190);
       const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowR);

@@ -47,6 +47,7 @@ function* recordSearchables(ledger: ParsedLedger): Generator<Searchable> {
     for (const [k, v] of Object.entries(rec.doc.context ?? {})) {
       yield { ...base, field: `context.${k}`, text: String(v) };
     }
+    if (rec.doc.dubious !== undefined) yield { ...base, field: 'dubious', text: rec.doc.dubious };
     for (const c of rec.doc.commitments ?? []) {
       yield {
         ...base,

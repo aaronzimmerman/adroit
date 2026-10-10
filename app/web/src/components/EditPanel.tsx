@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
+import { SUSPICION_FIELDS } from '@adroit/shared';
 import type { EditableField, LedgerSnapshot } from '@adroit/shared';
 import { api, ApiRefusal } from '../api.js';
+import { SuspectWalk } from './SuspectWalk.jsx';
 
 // @DecisionRef eng:same-operation-same-control — the one editing control every surface
 // mounts; a surface never rebuilds field editing for itself.
 // @DecisionRef ui:all-but-id-editable — every field is offered here except the id.
-const FIELDS: EditableField[] = ['decision', 'rejected', 'links', 'context', 'commitments'];
+const FIELDS: EditableField[] = ['decision', 'rejected', 'links', 'context', 'commitments', 'dubious'];
+/** Plain-text fields; the rest are edited as JSON. */
+const TEXT_FIELDS: EditableField[] = ['decision', 'dubious'];
 
 export function EditPanel({
   snapshot,
@@ -22,19 +26,35 @@ export function EditPanel({
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [impact, setImpact] = useState<{ descendants: string[]; consumers: string[] } | null>(null);
+  const [impact, setImpact] = useState<{
+    descendants: string[];
+    consumers: string[];
+    modelFields: { model: string; field: string }[];
+  } | null>(null);
+  const [worked, setWorked] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const value = rec.doc[field];
-    setText(field === 'decision' ? String(value ?? '') : JSON.stringify(value ?? (field === 'rejected' ? [] : {}), null, 2));
+    setText(
+      TEXT_FIELDS.includes(field)
+        ? String(value ?? '')
+        : JSON.stringify(value ?? (field === 'rejected' || field === 'commitments' ? [] : {}), null, 2),
+    );
   }, [field, id, rec]);
 
   // @DecisionRef ui:change-shows-implications — the dependents, measured from the graph,
   // are in front of the user at the moment of change, not discovered afterward.
   useEffect(() => {
     let live = true;
+    setWorked(new Set());
     api.impact(id).then((r) => {
-      if (live) setImpact({ descendants: r.descendants, consumers: r.consumers });
+      if (live) {
+        setImpact({
+          descendants: r.descendants,
+          consumers: r.consumers,
+          modelFields: r.modelFields ?? [],
+        });
+      }
     }).catch(() => undefined);
     return () => {
       live = false;
@@ -46,7 +66,10 @@ export function EditPanel({
     setError(null);
     try {
       let value: unknown = text;
-      if (field !== 'decision') {
+      if (field === 'dubious') {
+        // an emptied mark is a removal: confirming by hand
+        value = text.trim() ? text.trim() : null;
+      } else if (!TEXT_FIELDS.includes(field)) {
         try {
           value = JSON.parse(text);
         } catch {
@@ -58,14 +81,15 @@ export function EditPanel({
       const outcome = await api.change({
         operations: [{ op: 'edit-field', id, field, value }],
         ...(message.trim() ? { message } : {}),
+        ...(castsSuspicion ? { worked: [...worked] } : {}),
       });
-      // @DecisionRef eng:outcome-honesty — report what actually happened, suspects cast
-      // included.
-      const suspectNote =
-        outcome.suspects.length > 0
-          ? ` — suspicion cast over ${outcome.suspects.length} dependent record(s)`
+      // @DecisionRef eng:outcome-honesty — report what actually happened, the marks this
+      // commit wrote included.
+      const marked =
+        outcome.markedDubious.length > 0
+          ? ` — ${outcome.markedDubious.length} unworked suspect(s) marked dubious`
           : '';
-      onDone(`committed ${outcome.commit?.slice(0, 8) ?? ''}${suspectNote}`);
+      onDone(`committed ${outcome.commit?.slice(0, 8) ?? ''}${marked}`);
     } catch (e) {
       setError(e instanceof ApiRefusal ? e.message : 'the change failed');
     } finally {
@@ -73,7 +97,8 @@ export function EditPanel({
     }
   };
 
-  const showsImplications = field === 'decision' && impact;
+  const castsSuspicion = SUSPICION_FIELDS.includes(field);
+  const suspects = impact ? [...impact.descendants, ...impact.consumers] : [];
   return (
     <div className="edit-panel">
       <div className="edit-row">
@@ -89,27 +114,47 @@ export function EditPanel({
         </label>
         <span className="muted">the id is not editable — it is the name citations bind to</span>
       </div>
+      {field === 'dubious' && (
+        <div className="muted">
+          one line: the contradiction you observed — leave it empty to remove the mark
+        </div>
+      )}
       <textarea
-        rows={field === 'decision' ? 6 : 10}
+        aria-label={`${field} value`}
+        rows={field === 'decision' ? 6 : field === 'dubious' ? 2 : 10}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
-      {showsImplications && (
+      {castsSuspicion && impact && (
         <div className="implications">
           <strong>implications of changing this decision</strong>
           <div>
             {impact.descendants.length} descendant(s) and {impact.consumers.length} consumer(s)
             become suspect:
           </div>
-          <div className="id-list">
-            {[...impact.descendants, ...impact.consumers].map((d) => (
-              <code key={d}>{d}</code>
-            ))}
-          </div>
-          <div className="muted">
-            the commit is never gated — unworked suspects will read as DUBIOUS until
-            confirmed or edited
-          </div>
+          {/* @DecisionRef adr:fields-link-their-rulings — the model fields citing this
+              ruling are its migration surface, visible before the change lands. */}
+          {impact.modelFields.length > 0 && (
+            <div>
+              migration surface: {impact.modelFields.length} model field(s) cite this ruling —{' '}
+              {impact.modelFields.map((f) => (
+                <code key={`${f.model}.${f.field}`}>
+                  {f.model}.{f.field}{' '}
+                </code>
+              ))}
+            </div>
+          )}
+          <SuspectWalk
+            snapshot={snapshot}
+            suspects={suspects}
+            worked={worked}
+            onToggle={(s, on) => {
+              const next = new Set(worked);
+              if (on) next.add(s);
+              else next.delete(s);
+              setWorked(next);
+            }}
+          />
         </div>
       )}
       <div className="edit-row">

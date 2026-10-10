@@ -3,12 +3,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import { applyChange, confirmRecord, Refusal } from './change.js';
-import { dependentsOf, subtreeIds } from './derive.js';
+import { applyChange, Refusal } from './change.js';
+import { dependentsOf, fieldsCiting, subtreeIds } from './derive.js';
 import { GitFacts } from './gitfacts.js';
-import { interactionsPathFor, readInteractions } from './interactions.js';
 import { parseLedger } from './ledger.js';
-import { citationsFor, modelFieldUsage, scanCitations } from './lens.js';
+import { citationsFor } from './lens.js';
 import { searchLedger } from './search.js';
 import { buildSnapshot, type SnapshotOptions } from './snapshot.js';
 
@@ -62,7 +61,11 @@ export function createApp(opts: AppOptions): Express {
       const descendants = subtreeIds(ledger, id).filter((x) => x !== id);
       const dependents = dependentsOf(ledger, id);
       const consumers = dependents.filter((d) => !descendants.includes(d));
-      res.json({ id, descendants, consumers, dependents });
+      // A move's suspects are the moved subtree itself (ui:edits-cast-suspicion).
+      const moved = subtreeIds(ledger, id);
+      // The model fields citing this ruling: its migration surface (adr:fields-link-their-rulings).
+      const modelFields = fieldsCiting(ledger, id);
+      res.json({ id, descendants, consumers, dependents, moved, modelFields });
     }),
   );
 
@@ -70,16 +73,6 @@ export function createApp(opts: AppOptions): Express {
     '/api/change',
     wrap(async (req, res) => {
       const outcome = await applyChange(repoRoot, ledgerDirName, req.body);
-      res.json(outcome);
-    }),
-  );
-
-  app.post(
-    '/api/confirm',
-    wrap(async (req, res) => {
-      const { id, note } = req.body ?? {};
-      if (typeof id !== 'string') throw new Refusal('confirm needs the record id');
-      const outcome = await confirmRecord(repoRoot, ledgerDirName, id, String(note ?? ''));
       res.json(outcome);
     }),
   );
@@ -96,36 +89,6 @@ export function createApp(opts: AppOptions): Express {
         : 0;
       const citations = await citationsFor(repoRoot, codeDirs, id, git, decisionChangedAt);
       res.json({ id, citations, axis: 'textual @DecisionRef bindings in the built code' });
-    }),
-  );
-
-  app.get(
-    '/api/lens/model-usage',
-    wrap((req, res) => {
-      const id = String(req.query.id ?? '');
-      const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-      const model = ledger.models.find((m) => m.id === id);
-      if (!model) throw new Refusal(`model "${id}" does not exist`);
-      const usage = modelFieldUsage(repoRoot, codeDirs, Object.keys(model.doc.fields));
-      // The measure names its own axis so a result is never read as proving more
-      // (the same posture eng:dead-code-surfaces takes for its check).
-      res.json({ id, usage, axis: 'name-reference count in code files, not type-checked access' });
-    }),
-  );
-
-  app.get(
-    '/api/lens/all',
-    wrap((_req, res) => {
-      res.json(scanCitations(repoRoot, codeDirs));
-    }),
-  );
-
-  app.get(
-    '/api/interactions',
-    wrap((_req, res) => {
-      const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-      const file = opts.snapshot?.interactionsFile ?? interactionsPathFor(ledger.corpus);
-      res.json(readInteractions(file));
     }),
   );
 

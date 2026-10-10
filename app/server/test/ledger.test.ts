@@ -103,4 +103,40 @@ describe('validateRecordDoc', () => {
     );
     expect(probs.some((p) => p.includes('exactly one'))).toBe(true);
   });
+
+  // @DecisionRef model:record — each entry form has this exact spelling.
+  it('refuses a commitment entry outside its exact spelling', () => {
+    const extra = validateRecordDoc(
+      { ...base, commitments: [{ id: 'x-y', adherence: 'how', severable: false }] },
+      opts,
+    );
+    expect(extra.some((p) => p.includes('spelled'))).toBe(true);
+    const severableTrue = validateRecordDoc(
+      { ...base, commitments: [{ id: 'x-y', description: 'd', severable: true }] },
+      opts,
+    );
+    expect(severableTrue.some((p) => p.includes('only as false'))).toBe(true);
+    const ok = validateRecordDoc(
+      {
+        ...base,
+        commitments: [
+          { id: 'x-y', description: 'd', severable: false },
+          { id: 'z-w', negation: true },
+        ],
+      },
+      opts,
+    );
+    expect(ok).toEqual([]);
+  });
+
+  // @DecisionRef eng:decision-per-file — dubious is in the closed field list, optional,
+  // and holds one line; status, tokens and api stay refused.
+  it('accepts the optional dubious mark and still refuses status, tokens and api', () => {
+    expect(validateRecordDoc({ ...base, dubious: 'app:other changed under it' }, opts)).toEqual([]);
+    expect(validateRecordDoc({ ...base, dubious: '' }, opts).length).toBeGreaterThan(0);
+    expect(validateRecordDoc({ ...base, dubious: 'one\ntwo' }, opts).length).toBeGreaterThan(0);
+    for (const field of ['status', 'tokens', 'api']) {
+      expect(validateRecordDoc({ ...base, [field]: 'x' }, opts).length).toBeGreaterThan(0);
+    }
+  });
 });

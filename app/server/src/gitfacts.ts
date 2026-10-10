@@ -184,16 +184,6 @@ export class GitFacts {
     return 0;
   }
 
-  /** Epoch of the last rename of the file — ancestry change (UNCOMMITTED when staged now). */
-  async lastRename(relPath: string): Promise<number> {
-    const ws = await this.workingState(relPath);
-    if (ws.renamed) return UNCOMMITTED;
-    for (const c of await this.fileHistory(relPath)) {
-      if (c.status === 'R' || c.status === 'C') return c.epoch;
-    }
-    return 0;
-  }
-
   private static decisionOf(content: string | null): string | null {
     if (content === null) return null;
     try {
@@ -206,8 +196,8 @@ export class GitFacts {
 
   /**
    * Epoch of the last change to the record's DECISION field — the rule itself.
-   * @DecisionRef ui:dubious-derived-not-stored — dubiousness keys on when a decision
-   * changed, computed from git history at read time, written nowhere.
+   * @DecisionRef ui:read-only-code-lens — the lens reads "what changed in the code because
+   * the decision changed" against this moment.
    */
   async lastDecisionChange(relPath: string): Promise<number> {
     const ws = await this.workingState(relPath);
@@ -233,11 +223,6 @@ export class GitFacts {
       if (curDecision !== prevDecision) return cur.epoch;
     }
     return 0;
-  }
-
-  /** Epoch of the last change to any content of the file (models, contracts). */
-  async lastContentChange(relPath: string): Promise<number> {
-    return this.lastContentTouch(relPath);
   }
 
   /** Every ledger-relative path currently differing from HEAD (the working diff). */

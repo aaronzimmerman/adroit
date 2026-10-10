@@ -218,9 +218,11 @@ export function deriveCommitments(ledger: ParsedLedger): CommitmentDerivation {
 }
 
 // Named once (eng:window-named-once): what counts as "most of a tree under one child",
-// and what a subtree must weigh before concentration is worth surfacing.
+// what a subtree must weigh before concentration is worth surfacing, and how long a
+// single-child thread runs before the thinning is worth surfacing.
 const SKEW_CONCENTRATION_SHARE = 0.75;
 const SKEW_MIN_SUBTREE = 8;
+const SKEW_THREAD_LENGTH = 3;
 
 /**
  * @DecisionRef ui:surface-structural-skew — measure where the mass concentrates and where
@@ -243,6 +245,84 @@ export function deriveSkew(ledger: ParsedLedger): SkewSignal[] {
           note: `${Math.round(share * 100)}% of the ${total} decisions under ${rec.id} hang beneath ${child}`,
         });
       }
+    }
+  }
+  // Where the shape thins out: a single-child thread, reported once at its top.
+  for (const rec of ledger.records.values()) {
+    if (rec.children.length !== 1) continue;
+    const parent = rec.parent ? ledger.records.get(rec.parent) : undefined;
+    if (parent && parent.children.length === 1) continue; // not the top of the thread
+    let length = 1;
+    let cur = ledger.records.get(rec.children[0]);
+    while (cur && cur.children.length === 1) {
+      length++;
+      cur = ledger.records.get(cur.children[0]);
+    }
+    if (length >= SKEW_THREAD_LENGTH) {
+      out.push({
+        id: rec.id,
+        kind: 'sparse',
+        note: `below ${rec.id} the tree thins to a single thread ${length} decisions deep`,
+      });
+    }
+  }
+  return out;
+}
+
+const CITATION_GROUP_RE = /\(([^()]*)\)/g;
+const CITED_ID_RE = /\b([a-z][a-z-]*:[a-z][a-z-]*)\b/g;
+
+/**
+ * The ruling ids each deployed model field cites, read from the parenthesized citations
+ * in the field's own line — the in-grammar citation, so a bare format word like
+ * "domain:slug" in the prose is not taken for one. A capability named in a citation
+ * (its contract) is a link too.
+ * @DecisionRef adr:fields-link-their-rulings — the citations are links: they resolve,
+ * they count in the dependence graph, and an unlinked field is a probable orphan.
+ */
+export function modelFieldCitations(
+  ledger: ParsedLedger,
+  fields: Record<string, string>,
+): {
+  fieldLinks: Record<string, string[]>;
+  orphanFields: string[];
+  danglingCitations: { field: string; id: string }[];
+} {
+  const known = new Set<string>([...ledger.records.keys(), ...ledger.models.map((m) => m.id)]);
+  const capabilities = ledger.capabilities.map((c) => c.name);
+  const fieldLinks: Record<string, string[]> = {};
+  const orphanFields: string[] = [];
+  const danglingCitations: { field: string; id: string }[] = [];
+  for (const [field, text] of Object.entries(fields)) {
+    const groups = [...String(text).matchAll(CITATION_GROUP_RE)].map((m) => m[1]);
+    const cited = new Set<string>();
+    for (const g of groups) {
+      for (const m of g.matchAll(CITED_ID_RE)) cited.add(m[1]);
+      for (const cap of capabilities) {
+        if (new RegExp(`(^|[^a-z-])${cap}($|[^a-z-])`).test(g)) cited.add(cap);
+      }
+    }
+    const links: string[] = [];
+    let ambient = false;
+    for (const id of cited) {
+      if (known.has(id) || capabilities.includes(id)) links.push(id);
+      // a principle id is ambient vocabulary: it never dangles (adr:principles-are-ambient)
+      else if (id.startsWith('principle:')) ambient = true;
+      else danglingCitations.push({ field, id });
+    }
+    fieldLinks[field] = links;
+    if (links.length === 0 && !ambient) orphanFields.push(field);
+  }
+  return { fieldLinks, orphanFields, danglingCitations };
+}
+
+/** Model fields whose citations name this ruling: the migration surface of changing it. */
+export function fieldsCiting(ledger: ParsedLedger, id: string): { model: string; field: string }[] {
+  const out: { model: string; field: string }[] = [];
+  for (const m of ledger.models) {
+    const { fieldLinks } = modelFieldCitations(ledger, m.doc.fields);
+    for (const [field, links] of Object.entries(fieldLinks)) {
+      if (links.includes(id)) out.push({ model: m.id, field });
     }
   }
   return out;

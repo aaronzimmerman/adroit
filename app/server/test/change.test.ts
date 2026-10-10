@@ -39,12 +39,13 @@ describe('applyChange — atomic commit', () => {
   it('never sweeps unrelated dirty files into the commit', async () => {
     write(repo, 'ledger/engineering/eng.sample-practice.yaml', read(repo, 'ledger/engineering/eng.sample-practice.yaml') + '\n# dirty');
     write(repo, 'unrelated.txt', 'someone else was here');
+    // a leaf with no dependents: the commit touches exactly the one record
     await applyChange(repo, 'ledger', {
-      operations: [edit('app:parent-rule', 'decision', 'Changed.')],
+      operations: [edit('app:deep-leaf', 'decision', 'Changed.')],
     });
     const shown = git(repo, ['show', '--name-only', '--format=', 'HEAD']);
     expect(shown.trim().split('\n')).toEqual([
-      'ledger/product/demo/app.parent-rule/self.yaml',
+      'ledger/product/demo/app.parent-rule/app.severed-zone/app.deep-leaf.yaml',
     ]);
     const status = git(repo, ['status', '--porcelain']);
     expect(status).toContain('eng.sample-practice.yaml');
@@ -381,6 +382,85 @@ describe('model operations', () => {
         ],
       }),
     ).rejects.toThrow(/no pending entry/);
+  });
+});
+
+describe('land-migration', () => {
+  const pendAndBegin = (name: string) => ({
+    operations: [
+      {
+        op: 'set-model-field',
+        model: 'model:widget',
+        entry: { field: 'size', op: 'change', intended: 'scalar - size in millimeters', origin: ['app:parent-rule'] },
+      },
+      {
+        op: 'set-model-field',
+        model: 'model:widget',
+        entry: { field: 'color', op: 'add', intended: 'scalar - the color' },
+      },
+      { op: 'begin-migration', model: 'model:widget', name, fields: ['size', 'color'], origin: ['app:parent-rule'] },
+    ] as never[],
+  });
+
+  // @DecisionRef adr:models-memorialize-deployed-shape — the model updates only when the
+  // migration lands: in one act the deployed shape takes the intended shape, the pending
+  // entries go and the model:change file is deleted.
+  it('lands a migration in flight as one commit', async () => {
+    await applyChange(repo, 'ledger', pendAndBegin('widget-mm'));
+    const before = Number(git(repo, ['rev-list', '--count', 'HEAD']).trim());
+    const outcome = await applyChange(repo, 'ledger', {
+      operations: [{ op: 'land-migration', name: 'widget-mm' } as never],
+    });
+    expect(outcome.committed).toBe(true);
+    expect(Number(git(repo, ['rev-list', '--count', 'HEAD']).trim())).toBe(before + 1);
+    const model = YAML.parse(read(repo, 'ledger/models/model.widget.yaml'));
+    expect(model.fields.size).toBe('scalar - size in millimeters');
+    expect(model.fields.color).toBe('scalar - the color');
+    expect(model.fields.name).toContain('widget name');
+    expect(model.pending).toBeUndefined();
+    expect(exists(repo, 'ledger/models/pending-changes/widget-mm.yaml')).toBe(false);
+    expect(git(repo, ['status', '--porcelain']).trim()).toBe('');
+    expect(git(repo, ['log', '-1', '--format=%s']).trim()).toBe('land migration widget-mm');
+  });
+
+  it('landing removes identical entries still pending on the model file', async () => {
+    await applyChange(repo, 'ledger', pendAndBegin('widget-mm'));
+    const modelPath = 'ledger/models/model.widget.yaml';
+    const doc = YAML.parse(read(repo, modelPath));
+    doc.pending = [
+      { field: 'color', op: 'add', intended: 'scalar - the color' },
+      { field: 'name', op: 'change', intended: 'scalar - a later ruling', current: doc.fields.name },
+    ];
+    write(repo, modelPath, YAML.stringify(doc));
+    git(repo, ['commit', '-qam', 'pending entries on the file']);
+    await applyChange(repo, 'ledger', {
+      operations: [{ op: 'land-migration', name: 'widget-mm' } as never],
+    });
+    const after = YAML.parse(read(repo, modelPath));
+    expect(after.pending.map((p: { field: string }) => p.field)).toEqual(['name']);
+  });
+
+  // @DecisionRef eng:refusal-writes-nothing — a refused landing changes nothing.
+  it('a refused landing changes nothing', async () => {
+    await applyChange(repo, 'ledger', pendAndBegin('widget-mm'));
+    const modelPath = 'ledger/models/model.widget.yaml';
+    const doc = YAML.parse(read(repo, modelPath));
+    doc.fields.size = 'scalar - redefined behind the migration';
+    write(repo, modelPath, YAML.stringify(doc));
+    git(repo, ['commit', '-qam', 'deployed shape moved']);
+    const modelBefore = read(repo, modelPath);
+    await expect(
+      applyChange(repo, 'ledger', { operations: [{ op: 'land-migration', name: 'widget-mm' } as never] }),
+    ).rejects.toThrow(/changed since migration "widget-mm" began/);
+    expect(read(repo, modelPath)).toBe(modelBefore);
+    expect(exists(repo, 'ledger/models/pending-changes/widget-mm.yaml')).toBe(true);
+    expect(git(repo, ['status', '--porcelain']).trim()).toBe('');
+  });
+
+  it('refuses a migration that is not in flight', async () => {
+    await expect(
+      applyChange(repo, 'ledger', { operations: [{ op: 'land-migration', name: 'ghost' } as never] }),
+    ).rejects.toThrow(/no migration named "ghost"/);
   });
 });
 

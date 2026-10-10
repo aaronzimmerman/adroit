@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import type { CodeCitation, LedgerSnapshot, RecordDoc } from '@adroit/shared';
 import { api, ApiRefusal } from '../api.js';
 import { renderInstant } from '../time.js';
-import { DubiousBadge, describeReason } from './Badges.jsx';
+import { DubiousBadge, DubiousReason } from './Badges.jsx';
 import { ConfirmControl } from './ConfirmControl.jsx';
 import { EditPanel } from './EditPanel.jsx';
+import { SuspectWalk } from './SuspectWalk.jsx';
 
 interface TravelFn {
   (id: string): void;
@@ -48,21 +49,10 @@ export function RecordOverlay({
         <button onClick={onClose}>close</button>
       </div>
 
-      {rec.dubious.length > 0 && (
+      {rec.doc.dubious !== undefined && (
         <div className="dubious-box">
           <strong>There is reason to expect this record is no longer coherent:</strong>
-          <ul>
-            {rec.dubious.map((r, i) => (
-              <li key={i}>
-                {describeReason(r)}{' '}
-                {r.kind !== 'moved' && (
-                  <button className="link" onClick={() => onTravel(r.source)}>
-                    read {r.source}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <DubiousReason record={rec} snapshot={snapshot} onTravel={onTravel} />
           <ConfirmControl id={id} onDone={onChanged} />
         </div>
       )}
@@ -237,6 +227,18 @@ function LinksExplorer({
                   {open === key && (
                     <div className="gist">
                       <p>{gistOf(t)}</p>
+                      {/* @DecisionRef ui:two-depths-per-link — a tension link's gist states
+                          the divergence it marks.
+                          @DecisionGap no field holds the divergence a tension link marks;
+                          chosen: the citing record's context.why, which carries it today. */}
+                      {rel.name === 'tension' && (
+                        <p className="muted">
+                          the divergence:{' '}
+                          {typeof rec.doc.context.why === 'string'
+                            ? rec.doc.context.why
+                            : 'this record states no reason for diverging'}
+                        </p>
+                      )}
                       {!t.startsWith('principle:') || snapshot.records[t] ? (
                         <button className="link" onClick={() => onTravel(t)}>
                           go to its full context →
@@ -327,17 +329,19 @@ function MovePanel({
 }) {
   const [newParent, setNewParent] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const rec = snapshot.records[id];
-  const subtree = rec.subtreeSize;
+  const moved = useMovedSubtree(id);
+  const [worked, setWorked] = useWorkedSet(id);
+  const subtree = moved.length;
 
   const commit = async () => {
     setError(null);
     try {
       const outcome = await api.change({
         operations: [{ op: 'move-record', id, newParent: newParent.trim() }],
+        worked: [...worked],
       });
       onDone(
-        `moved ${id}; suspicion cast over the moved subtree (${outcome.suspects.length} records)`,
+        `moved ${id}; ${outcome.markedDubious.length} unworked record(s) of the moved subtree marked dubious`,
       );
     } catch (e) {
       setError(e instanceof ApiRefusal ? e.message : 'move failed');
@@ -352,6 +356,7 @@ function MovePanel({
       <div className="implications">
         a move casts suspicion over the moved subtree ({subtree} record{subtree === 1 ? '' : 's'}):
         ancestry and effective commitments change without touching a field
+        <SuspectWalk snapshot={snapshot} suspects={moved} worked={worked} onToggle={setWorked} />
       </div>
       <label>
         new parent (a record id, or <code>engineering</code> / <code>capabilities/&lt;name&gt;</code>)
@@ -391,6 +396,8 @@ function PromotePanel({
     Object.fromEntries(rec.consumers.map((c) => [c, true])),
   );
   const [error, setError] = useState<string | null>(null);
+  const moved = useMovedSubtree(id);
+  const [worked, setWorked] = useWorkedSet(id);
 
   const commit = async () => {
     setError(null);
@@ -416,6 +423,7 @@ function PromotePanel({
       const outcome = await api.change({
         operations: ops,
         message: `extract capability ${capName} from ${id}`,
+        worked: [...worked],
       });
       onDone(`extracted capability ${capName} in commit ${outcome.commit?.slice(0, 8) ?? ''}`);
     } catch (e) {
@@ -451,6 +459,10 @@ function PromotePanel({
           ))}
         </div>
       )}
+      <div className="implications">
+        the promoted subtree moves, so each of its records becomes suspect
+        <SuspectWalk snapshot={snapshot} suspects={moved} worked={worked} onToggle={setWorked} />
+      </div>
       <button onClick={commit} disabled={!name.trim() || !summary.trim()}>
         extract and commit
       </button>
@@ -459,7 +471,34 @@ function PromotePanel({
   );
 }
 
-/** @DecisionRef ui:read-only-code-lens — read the code's citations of this decision. */
+/** A move's suspect set, measured by the server: the moved subtree. */
+function useMovedSubtree(id: string): string[] {
+  const [moved, setMoved] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    api.impact(id).then((r) => live && setMoved(r.moved ?? [])).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return moved;
+}
+
+function useWorkedSet(id: string): [Set<string>, (s: string, on: boolean) => void] {
+  const [worked, setWorked] = useState<Set<string>>(new Set());
+  useEffect(() => setWorked(new Set()), [id]);
+  const toggle = (s: string, on: boolean) =>
+    setWorked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(s);
+      else next.delete(s);
+      return next;
+    });
+  return [worked, toggle];
+}
+
+/** @DecisionRef ui:read-only-code-lens — read the code's citations of this decision and
+ * whether each changed since the rule did. */
 function LensPanel({ id }: { id: string }) {
   const [citations, setCitations] = useState<CodeCitation[] | null>(null);
   const [axis, setAxis] = useState('');
@@ -492,6 +531,7 @@ function LensPanel({ id }: { id: string }) {
             ) : (
               <span className="lagging">not touched since the rule changed</span>
             )}
+            <span className="muted">file last changed {renderInstant(c.fileLastChanged)}</span>
           </div>
           <pre>{c.snippet}</pre>
         </div>

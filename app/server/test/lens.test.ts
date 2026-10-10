@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GitFacts } from '../src/gitfacts.js';
 import { parseLedger } from '../src/ledger.js';
-import { citationsFor, modelFieldUsage, scanCitations } from '../src/lens.js';
+import { citationsFor, scanCitations } from '../src/lens.js';
 import { commitAll, makeFixtureRepo, PAST_EPOCH, rmFixture, write } from './fixture.js';
 
 let repo: string;
@@ -46,14 +46,6 @@ describe('code lens', () => {
     expect(cites).toHaveLength(1);
     // code committed after the rule last changed: it has caught up
     expect(cites[0].changedSinceDecision).toBe(true);
-  });
-
-  it('measures model field usage as name references, unused fields visible', () => {
-    const usage = modelFieldUsage(repo, ['app'], ['name', 'size', 'unused']);
-    const byField = Object.fromEntries(usage.map((u) => [u.field, u.count]));
-    expect(byField.name).toBeGreaterThan(0);
-    expect(byField.size).toBeGreaterThan(0);
-    expect(byField.unused).toBe(0);
   });
 });
 

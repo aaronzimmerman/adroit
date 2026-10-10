@@ -1,29 +1,46 @@
-import type { DerivedRecord, DubiousReason } from '@adroit/shared';
-import { renderInstant } from '../time.js';
+import type { DerivedRecord, LedgerSnapshot } from '@adroit/shared';
 
-// @DecisionRef ui:edits-cast-suspicion — an unworked suspect reads as DUBIOUS visibly,
-// wherever it appears; this one badge is that label on every DOM surface.
+// @DecisionRef ui:dubious-is-recorded — the mark is the record's own field; this one badge
+// shows it, with its reason, on every DOM surface the record appears on.
 // @DecisionRef eng:same-operation-same-control — one shared component, mounted by every
 // surface that shows the state, never per-surface copies.
-export function DubiousBadge({ record }: { record: Pick<DerivedRecord, 'dubious'> }) {
-  if (record.dubious.length === 0) return null;
+export function DubiousBadge({ record }: { record: Pick<DerivedRecord, 'doc'> }) {
+  if (record.doc.dubious === undefined) return null;
   return (
-    <span className="dubious-badge" title={record.dubious.map(describeReason).join('\n')}>
+    <span className="dubious-badge" title={record.doc.dubious}>
       DUBIOUS
     </span>
   );
 }
 
-export function describeReason(r: DubiousReason): string {
-  const when = renderInstant(r.at);
-  switch (r.kind) {
-    case 'ancestor-decision':
-      return `${r.source} (an ancestor) changed its decision ${when}`;
-    case 'moved':
-      return `this record was moved — its ancestry and effective commitments changed ${when}`;
-    case 'consumed-change':
-      return `${r.source}, which this record consumes, changed ${when}`;
-  }
+/**
+ * The mark's one line of reason, with every record it names reachable — the reason names
+ * the record whose change made this one suspect (ui:dubious-is-recorded).
+ */
+export function DubiousReason({
+  record,
+  snapshot,
+  onTravel,
+}: {
+  record: Pick<DerivedRecord, 'id' | 'doc'>;
+  snapshot: LedgerSnapshot;
+  onTravel: (id: string) => void;
+}) {
+  const line = record.doc.dubious;
+  if (line === undefined) return null;
+  const named = [...new Set([...line.matchAll(/[a-z][a-z-]*:[a-z][a-z-]*/g)].map((m) => m[0]))].filter(
+    (id) => id !== record.id && snapshot.records[id] !== undefined,
+  );
+  return (
+    <div className="dubious-reason">
+      <span>{line}</span>{' '}
+      {named.map((id) => (
+        <button key={id} className="link" onClick={() => onTravel(id)}>
+          read {id}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Hierarchy({ ids }: { ids: string[] }) {

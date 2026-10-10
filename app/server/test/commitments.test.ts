@@ -155,6 +155,25 @@ describe('graph measures', () => {
       rmFixture(big);
     }
   });
+
+  // @DecisionRef ui:surface-structural-skew — where the shape thins out is surfaced too.
+  it('deriveSkew flags a tree thinning to a single thread, once at its top', () => {
+    const thin = makeFixtureRepo();
+    try {
+      const rec = (id: string) =>
+        [`id: ${id}`, 'decision: One link of a thread.', 'rejected: []', 'links: {}', 'context: {}'].join('\n');
+      write(thin, 'ledger/engineering/eng.thread-a/self.yaml', rec('eng:thread-a'));
+      write(thin, 'ledger/engineering/eng.thread-a/eng.thread-b/self.yaml', rec('eng:thread-b'));
+      write(thin, 'ledger/engineering/eng.thread-a/eng.thread-b/eng.thread-c/self.yaml', rec('eng:thread-c'));
+      write(thin, 'ledger/engineering/eng.thread-a/eng.thread-b/eng.thread-c/eng.thread-d.yaml', rec('eng:thread-d'));
+      commitAll(thin, 'a thread', PAST_EPOCH + 1);
+      const sparse = deriveSkew(parseLedger(path.join(thin, 'ledger'))).filter((s) => s.kind === 'sparse');
+      expect(sparse.map((s) => s.id)).toEqual(['eng:thread-a']);
+      expect(sparse[0].note).toContain('3 decisions deep');
+    } finally {
+      rmFixture(thin);
+    }
+  });
 });
 
 // @DecisionRef eng:changes-are-projectable — projecting pending entries yields the ruled

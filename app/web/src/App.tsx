@@ -7,6 +7,7 @@ import { EngineeringView } from './components/EngineeringView.jsx';
 import { MapView } from './components/MapView.jsx';
 import { ModelsView } from './components/ModelsView.jsx';
 import { RecordOverlay } from './components/RecordOverlay.jsx';
+import { GapsPanel } from './components/GapsPanel.jsx';
 import { SearchPanel } from './components/SearchPanel.jsx';
 import { SuspectsPanel } from './components/SuspectsPanel.jsx';
 
@@ -22,6 +23,7 @@ export function App() {
   const [overlayId, setOverlayId] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [suspectsOpen, setSuspectsOpen] = useState(false);
+  const [gapsOpen, setGapsOpen] = useState(false);
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export function App() {
   if (loadError) return <div className="load-error">{loadError}</div>;
   if (!snapshot || !view) return <div className="load-error muted">reading the ledger…</div>;
 
-  const suspectCount = Object.values(snapshot.records).filter((r) => r.dubious.length > 0).length;
+  const suspectCount = Object.values(snapshot.records).filter((r) => r.doc.dubious !== undefined).length;
   const treeRoot =
     view.kind === 'tree'
       ? snapshot.productTrees.find((t) => t.name === view.tree)?.rootId
@@ -147,6 +149,9 @@ export function App() {
           onClick={() => setSuspectsOpen(!suspectsOpen)}
         >
           dubious: {suspectCount}
+        </button>
+        <button className="suspects-button" onClick={() => setGapsOpen(!gapsOpen)}>
+          gaps: {snapshot.gaps.length}
         </button>
       </header>
 
@@ -205,6 +210,9 @@ export function App() {
             onChanged={onChanged}
             onClose={() => setSuspectsOpen(false)}
           />
+        )}
+        {gapsOpen && (
+          <GapsPanel snapshot={snapshot} onTravel={travel} onClose={() => setGapsOpen(false)} />
         )}
       </main>
     </div>

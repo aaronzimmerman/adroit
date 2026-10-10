@@ -5,6 +5,7 @@
 // first write; a refusal leaves the working tree exactly as it found it.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { SUSPICION_FIELDS } from '@adroit/shared';
 import type {
   ChangeDoc,
   ChangeRequest,
@@ -28,7 +29,6 @@ import {
 } from './ledger.js';
 import { dependentsOf, deriveCommitments, subtreeIds } from './derive.js';
 import { runGit } from './gitfacts.js';
-import { todayUtc } from './clock.js';
 
 /** A user-caused refusal; its message is in the user's own terms
  * (@DecisionRef eng:refusal-explains-itself — the field, the limit, never internals). */
@@ -36,16 +36,29 @@ export class Refusal extends Error {}
 
 type FsAction =
   | { type: 'write'; rel: string; content: string }
-  | { type: 'rename'; from: string; to: string };
+  | { type: 'rename'; from: string; to: string }
+  | { type: 'delete'; rel: string };
 
-const EDITABLE_FIELDS: EditableField[] = ['decision', 'rejected', 'links', 'context', 'commitments'];
+const EDITABLE_FIELDS: EditableField[] = [
+  'decision',
+  'rejected',
+  'links',
+  'context',
+  'commitments',
+  'dubious',
+];
+/** Optional fields: an edit with a null value removes the field. */
+const OPTIONAL_FIELDS: EditableField[] = ['commitments', 'dubious'];
 
 interface PlanState {
   ledger: ParsedLedger;
   actions: FsAction[];
   /** Ledger-relative paths touched (for scoped git add/commit). */
   touched: Set<string>;
-  suspects: Set<string>;
+  /** Suspect id -> the one-line reason naming the record whose change made it suspect. */
+  suspects: Map<string, string>;
+  /** Records the change itself edits or creates: worked by this very commit. */
+  worked: Set<string>;
   /** Records whose commitments this change writes directly: only their new
    * incoherences refuse; indirect ones (a move stranding an adherence) surface
    * instead — the commit is never gated (ui:edits-cast-suspicion,
@@ -55,6 +68,11 @@ interface PlanState {
 
 function clone<T>(v: T): T {
   return structuredClone(v);
+}
+
+function castSuspicion(state: PlanState, id: string, reason: string): void {
+  const prior = state.suspects.get(id);
+  state.suspects.set(id, prior && !prior.includes(reason) ? `${prior}; ${reason}` : prior ?? reason);
 }
 
 function recordDirFor(rec: ParsedRecord, state: PlanState): string {
@@ -142,6 +160,7 @@ function planCreateRecord(state: PlanState, parent: string, record: RecordDoc): 
   state.ledger.records.set(record.id, created);
   if (parentRec) parentRec.children.push(record.id);
   if (record.commitments !== undefined) state.commitmentAuthored.add(record.id);
+  state.worked.add(record.id);
 }
 
 function planEditField(state: PlanState, id: string, field: EditableField, value: unknown): void {
@@ -155,15 +174,32 @@ function planEditField(state: PlanState, id: string, field: EditableField, value
     );
   }
   const next = clone(rec.doc) as RecordDoc & Record<string, unknown>;
-  if (value === undefined && field === 'commitments') delete next.commitments;
-  else (next as Record<string, unknown>)[field] = value;
+  const removing = value === null || value === undefined;
+  if (removing && OPTIONAL_FIELDS.includes(field)) {
+    if (field === 'dubious' && next.dubious === undefined) {
+      // @DecisionRef eng:refusal-explains-itself — confirming is removing the mark; a
+      // record without one has nothing to confirm.
+      throw new Refusal(`${id} is not marked dubious — there is nothing to confirm`);
+    }
+    delete (next as Record<string, unknown>)[field];
+  } else {
+    (next as Record<string, unknown>)[field] = typeof value === 'string' && field === 'dubious' ? value.trim() : value;
+  }
+  if (field !== 'dubious') {
+    // @DecisionRef ui:dubious-is-recorded — reading a record through and editing it clears
+    // its mark in the same write.
+    delete next.dubious;
+  }
   validateDocOrRefuse(state, next);
-  if (field === 'decision') {
+  if (SUSPICION_FIELDS.includes(field)) {
     // @DecisionRef ui:edits-cast-suspicion — editing a decision casts suspicion across
     // every refinement descendant and every consumer.
-    for (const dep of dependentsOf(state.ledger, id)) state.suspects.add(dep);
+    for (const dep of dependentsOf(state.ledger, id)) {
+      castSuspicion(state, dep, `${id} was edited (${field}) and this record depends on it`);
+    }
   }
   if (field === 'commitments') state.commitmentAuthored.add(id);
+  state.worked.add(id);
   rec.doc = next;
   state.actions.push({ type: 'write', rel: rec.path, content: recordToYaml(next) });
   state.touched.add(rec.path);
@@ -200,7 +236,13 @@ function planMoveRecord(state: PlanState, id: string, newParent: string): void {
     state.touched.add(sub.path);
     // @DecisionRef ui:edits-cast-suspicion — a move casts the same suspicion over the
     // moved subtree: ancestry changed without touching a field.
-    state.suspects.add(subId);
+    castSuspicion(
+      state,
+      subId,
+      subId === id
+        ? `${id} was moved under ${newParent}; its ancestry and effective commitments changed`
+        : `moved with ${id} under ${newParent}; its ancestry and effective commitments changed`,
+    );
   }
   // Fix up bookkeeping on the moved record itself.
   if (rec.isFolder) {
@@ -287,6 +329,58 @@ function planBeginMigration(
   state.ledger.changes.push({ path: rel, doc });
 }
 
+function samePending(a: PendingFieldEntry, b: PendingFieldEntry): boolean {
+  return a.field === b.field && a.op === b.op && a.intended === b.intended;
+}
+
+/**
+ * The user's attestation that a migration in flight shipped: the deployed shape takes the
+ * intended shape for every field the change carries, its pending entries go, and the
+ * model:change file is deleted — one act, refused whole or applied whole.
+ * @DecisionRef adr:models-memorialize-deployed-shape — the model updates only when the
+ * migration lands, and this is that landing.
+ * @DecisionGap the contract has land-migration remove "the pending entries it gathered",
+ * while begin-migration already lifts them out of the model file (model:change "until
+ * then"); chosen: landing also removes any identical entry still on the model file.
+ */
+function planLandMigration(state: PlanState, name: string): void {
+  const change = state.ledger.changes.find((c) => c.doc.name === name);
+  if (!change) throw new Refusal(`no migration named "${name}" is in flight`);
+  const model = state.ledger.models.find((m) => m.id === change.doc.model);
+  if (!model) throw new Refusal(`migration "${name}" names model "${change.doc.model}", which does not exist`);
+  const operations = change.doc.operations ?? [];
+  if (operations.length === 0) throw new Refusal(`migration "${name}" carries no field changes to land`);
+  const fields = { ...model.doc.fields };
+  for (const op of operations) {
+    const deployed = fields[op.field];
+    if (op.op === 'add') {
+      if (deployed !== undefined) {
+        throw new Refusal(`"${op.field}" is already deployed on ${model.id}; the migration adds it`);
+      }
+    } else if (deployed === undefined) {
+      throw new Refusal(`"${op.field}" is not deployed on ${model.id}; the migration ${op.op}s it`);
+    } else if (op.current !== undefined && deployed !== op.current) {
+      throw new Refusal(
+        `the deployed shape of ${model.id}.${op.field} changed since migration "${name}" began`,
+      );
+    }
+    if (op.op === 'remove') delete fields[op.field];
+    else {
+      if (!op.intended) throw new Refusal(`migration "${name}" has no intended shape for "${op.field}"`);
+      fields[op.field] = op.intended;
+    }
+  }
+  model.doc.fields = fields;
+  const pending = (model.doc.pending ?? []).filter((p) => !operations.some((g) => samePending(g, p)));
+  if (pending.length > 0) model.doc.pending = pending;
+  else delete model.doc.pending;
+  state.actions.push({ type: 'write', rel: model.path, content: modelToYaml(model.doc) });
+  state.actions.push({ type: 'delete', rel: change.path });
+  state.touched.add(model.path);
+  state.touched.add(change.path);
+  state.ledger.changes = state.ledger.changes.filter((c) => c !== change);
+}
+
 function planPublishContract(state: PlanState, name: string, contract: ContractDoc): void {
   if (!/^[a-z][a-z-]*$/.test(name)) throw new Refusal('a capability name is lowercase kebab words');
   if (contract.capability !== name) {
@@ -306,7 +400,21 @@ function planPublishContract(state: PlanState, name: string, contract: ContractD
   const rel = path.posix.join('capabilities', name, 'contract.yaml');
   state.actions.push({ type: 'write', rel, content: contractToYaml(contract) });
   state.touched.add(rel);
-  if (existing) existing.contract = clone(contract);
+  if (existing) {
+    // @DecisionGap ui:edits-cast-suspicion names edits and moves of decisions; a contract
+    // is the interface its adherents consume (model:record: "something the record depends
+    // on"), so a republish casts suspicion over the adherents. Model operations cast none.
+    for (const adherent of state.ledger.records.values()) {
+      if ((adherent.doc.links?.consumes ?? []).map(String).includes(name)) {
+        castSuspicion(
+          state,
+          adherent.id,
+          `the ${name} contract this record consumes was republished at version ${contract.version}`,
+        );
+      }
+    }
+    existing.contract = clone(contract);
+  }
   else state.ledger.capabilities.push({ name, contractPath: rel, contract: clone(contract), records: [] });
 }
 
@@ -322,6 +430,8 @@ function describeOp(op: Operation): string {
       return `pend ${op.model}.${op.entry.field} (${op.entry.op})`;
     case 'begin-migration':
       return `begin migration ${op.name} on ${op.model}`;
+    case 'land-migration':
+      return `land migration ${op.name}`;
     case 'publish-contract':
       return `publish contract ${op.name}`;
   }
@@ -330,8 +440,8 @@ function describeOp(op: Operation): string {
 /**
  * Validate, apply and (unless commit:false) land a change request as ONE atomic commit
  * across every record it touches. Source control is the transaction.
- * @DecisionRef ui:edits-cast-suspicion — the commit is never gated: suspects are reported,
- * never a precondition.
+ * @DecisionRef ui:edits-cast-suspicion — the commit is never gated: suspects are reported
+ * and marked, never a precondition.
  */
 export async function applyChange(
   repoRoot: string,
@@ -346,7 +456,8 @@ export async function applyChange(
     ledger: parseLedger(ledgerDir),
     actions: [],
     touched: new Set(),
-    suspects: new Set(),
+    suspects: new Map(),
+    worked: new Set(),
     commitmentAuthored: new Set(),
   };
   const before = deriveCommitments(state.ledger).incoherences;
@@ -368,6 +479,9 @@ export async function applyChange(
         break;
       case 'begin-migration':
         planBeginMigration(state, op.model, op.name, op.fields, op.origin);
+        break;
+      case 'land-migration':
+        planLandMigration(state, op.name);
         break;
       case 'publish-contract':
         planPublishContract(state, op.name, op.contract);
@@ -392,12 +506,33 @@ export async function applyChange(
     throw new Refusal(introduced.map((i) => i.note).join('; '));
   }
 
+  // @DecisionRef ui:dubious-is-recorded — the same act that lands the edit writes the
+  // mark onto every suspect not worked before the commit, naming what made it suspect.
+  const worked = new Set([...state.worked, ...(req.worked ?? [])]);
+  const markedDubious: string[] = [];
+  for (const [id, reason] of state.suspects) {
+    const rec = state.ledger.records.get(id);
+    if (!rec || worked.has(id)) continue;
+    const prior = rec.doc.dubious;
+    // @DecisionGap one line holds every reason when a record is already dubious; chosen:
+    // a new cause is appended to the existing line rather than replacing it.
+    const line = prior && !prior.includes(reason) ? `${prior}; ${reason}` : prior ?? reason;
+    if (line !== prior) {
+      rec.doc = { ...rec.doc, dubious: line };
+      state.actions.push({ type: 'write', rel: rec.path, content: recordToYaml(rec.doc) });
+      state.touched.add(rec.path);
+    }
+    markedDubious.push(id);
+  }
+
   // Phase 2 — perform the planned file operations.
   for (const action of state.actions) {
     if (action.type === 'rename') {
       const to = path.join(ledgerDir, action.to);
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.renameSync(path.join(ledgerDir, action.from), to);
+    } else if (action.type === 'delete') {
+      fs.rmSync(path.join(ledgerDir, action.rel), { force: true });
     } else {
       const to = path.join(ledgerDir, action.rel);
       fs.mkdirSync(path.dirname(to), { recursive: true });
@@ -417,40 +552,13 @@ export async function applyChange(
     commitHash = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
   }
 
-  const suspects = [...state.suspects].filter((s) => state.ledger.records.has(s));
+  const suspects = [...state.suspects.keys()].filter((s) => state.ledger.records.has(s));
   return {
     ok: true,
     committed: wantCommit,
     ...(commitHash !== undefined ? { commit: commitHash } : {}),
     touched: touchedRepoPaths,
     suspects,
+    markedDubious,
   };
-}
-
-// @DecisionGap the change-propose contract births a migration (begin-migration) but
-// offers no landing operation; landing stays outside the UI's write set until ruled.
-
-/**
- * Confirm a record without editing it: one line of provenance into context, committed
- * like any edit, so the review is an auditable act.
- * @DecisionGap no record names where in context the provenance line lives; chosen as
- * context.reviewed, latest line wins, git history keeping the earlier reviews.
- * @DecisionRef ui:dubious-derived-not-stored — confirmation clears the label by touching
- * the record through the ordinary write path, never by storing a flag.
- */
-export async function confirmRecord(
-  repoRoot: string,
-  ledgerDirName: string,
-  id: string,
-  note: string,
-): Promise<ChangeOutcome> {
-  const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-  const rec = ledger.records.get(id);
-  if (!rec) throw new Refusal(`record "${id}" does not exist`);
-  const line = `${todayUtc()}: confirmed coherent — ${note || 'read through, no change needed'}`;
-  const context = { ...rec.doc.context, reviewed: line };
-  return applyChange(repoRoot, ledgerDirName, {
-    operations: [{ op: 'edit-field', id, field: 'context', value: context }],
-    message: `confirm ${id}`,
-  });
 }

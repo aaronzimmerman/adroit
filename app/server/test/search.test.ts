@@ -48,6 +48,14 @@ describe('searchLedger', () => {
     expect(hits.some((h) => h.id === 'story:demo' && h.field === 'commitments.works-offline')).toBe(true);
   });
 
+  it('matches the reason a dubious mark gives', () => {
+    const rec = ledger.records.get('app:child-rule')!;
+    rec.doc = { ...rec.doc, dubious: 'contradicts the quartz rule' };
+    const hits = searchLedger(ledger, 'quartz');
+    expect(hits.some((h) => h.id === 'app:child-rule' && h.field === 'dubious')).toBe(true);
+    delete rec.doc.dubious;
+  });
+
   it('an empty query returns nothing', () => {
     expect(searchLedger(ledger, '  ')).toEqual([]);
   });

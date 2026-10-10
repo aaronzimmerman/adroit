@@ -1,10 +1,10 @@
 import type { LedgerSnapshot } from '@adroit/shared';
-import { describeReason } from './Badges.jsx';
+import { DubiousReason } from './Badges.jsx';
 import { ConfirmControl } from './ConfirmControl.jsx';
 
 /**
- * @DecisionRef ui:edits-cast-suspicion — the UI walks the user through reading,
- * confirming or editing each suspect; the debt stays visible, never a gate.
+ * @DecisionRef ui:edits-cast-suspicion — the marked records stay visible until each is read
+ * through and confirmed or edited; the debt stays visible, never a gate.
  */
 export function SuspectsPanel({
   snapshot,
@@ -19,7 +19,7 @@ export function SuspectsPanel({
   onChanged: (m: string) => void;
   onClose: () => void;
 }) {
-  const suspects = Object.values(snapshot.records).filter((r) => r.dubious.length > 0);
+  const suspects = Object.values(snapshot.records).filter((r) => r.doc.dubious !== undefined);
   return (
     <div className="suspects-panel">
       <div className="overlay-head">
@@ -27,10 +27,7 @@ export function SuspectsPanel({
         <span className="spacer" />
         <button onClick={onClose}>close</button>
       </div>
-      {suspects.length === 0 && (
-        <p className="muted">nothing is dubious: every record has been worked since what it
-        depends on last changed</p>
-      )}
+      {suspects.length === 0 && <p className="muted">no record carries a dubious mark</p>}
       {suspects.map((r) => (
         <div key={r.id} className="suspect-row">
           <div>
@@ -41,13 +38,12 @@ export function SuspectsPanel({
               go to it →
             </button>
           </div>
-          <ul>
-            {r.dubious.map((reason, i) => (
-              <li key={i}>{describeReason(reason)}</li>
-            ))}
-          </ul>
+          <DubiousReason record={r} snapshot={snapshot} onTravel={onTravel} />
           <p className="rule-text">{r.doc.decision}</p>
-          <ConfirmControl id={r.id} onDone={onChanged} />
+          <ConfirmControl id={r.id} onDone={onChanged} />{' '}
+          <button className="link" onClick={() => onOpen(r.id)}>
+            read and edit it
+          </button>
         </div>
       ))}
     </div>
