@@ -1,0 +1,60 @@
+id: adr:models-flat-views-derived
+decision: >-
+  A model is FLAT — the shape of the data at rest in the current implementation, with no decision
+  tree beneath it and no decision pointing at it (adr:roots-by-concern). The record is a short concept statement plus a structured shape: a
+  field list where every field names its kind (scalar, reference to another model, derived),
+  cites the ruling that governs it, and states in plain words its semantic meaning and usage
+  intent — who writes it, who reads it, or what behavior turns on it, whichever is the
+  load-bearing fact — grounded in the rulings and the code's actual readers, never invented;
+  a field whose intent cannot be grounded says so rather than carrying a story. The models root
+  is the ONE sanctioned home for field-level shape — everywhere else rules-not-implementation
+  holds. The model-to-model graph derives from
+  the reference fields and the decision-to-shape wiring from the per-field citations; no separate
+  map is kept. Shared and communicated semantics live in a VIEW: every transfer object that
+  crosses a trust context is a view — a flat read contract that names its audience, declares the
+  models it reads, and maps each field to the model field it projects or to the ruling defining
+  its derivation. Read-only by construction — mutation decisions stay with their actors — and
+  nothing defined twice: a projected field inherits its meaning from the model; only derivations
+  carry their own definition.
+rejected:
+  - >-
+    decision trees under models to hold shared semantics — the model stops being a contract and
+    becomes another product tree
+  - >-
+    prose-paragraph model records with rulings woven into running text (the downstream drift this
+    revision corrects, 2026-10-07) — the shape was unreadable at a glance and neither the model
+    graph nor the decision wiring could be derived from it
+  - >-
+    views minted only on MEASURED sharing, a second consumer needing the same derivation (this
+    record's first form, revised 2026-10-07) — that bar left most transfer objects with no
+    contract at all; the communication shape deserves the same memorialization as the at-rest
+    shape, and a single-consumer derivation is still a definition someone must own once
+  - >-
+    each consumer carrying its own copy of a shared derivation — copies drift; the expiry predicate
+    shipped twice with opposite mechanisms
+  - a behavioral capability owning a model’s lifecycle — the mutation decisions belong to the actors
+  - >-
+    a model as a contract decisions buy into and consume (this record's form until 2026-10-10) —
+    the model realizes decisions and cites them; a decision that consumes a model couples a ruling
+    to deployed shape
+links:
+  domain: adr
+context:
+  why: >-
+    user, rulings on the notice seam: models define shape at rest; the gap was derived fields
+    needing one consistent definition across actors. Revised 2026-10-07 (user-directed, StageDoor
+    models-root rework): "my intent for this section was to explicitly define the at rest data
+    shapes and the transfer objects as views... we want to see the way the models interact and the
+    way the decisions in the product tree interact with them" — the structured shape block, the
+    per-field governing citation, and the every-DTO-is-a-view bar all land in that session;
+    extended same day: every field also carries its semantic meaning and usage intent ("we need
+    to expand these even more to include the semantic meaning and usage intent for the fields"). Proving
+    instance: StageDoor's public listing view. Revised 2026-10-10 (user-directed): "The model
+    points to a decision; the decision never points to a model"
+  src: >-
+    decisions/inbox/009-four-roots-structure.md (landed as PR #41); session 2026-09-23/24; user
+    messages 61-89 verbatim in tasks/082-user-notes.md; StageDoor tasks/099 session 2026-10-07
+  demoted: >-
+    grounded on principle:derive-dont-materialize while this corpus lived in StageDoor's ledger; that principle stayed
+    downstream when the corpus moved upstream (2026-09-28), so the edge demoted to this note
+    (adr:references-flow-one-way — a relationship the direction forbids demotes to context)

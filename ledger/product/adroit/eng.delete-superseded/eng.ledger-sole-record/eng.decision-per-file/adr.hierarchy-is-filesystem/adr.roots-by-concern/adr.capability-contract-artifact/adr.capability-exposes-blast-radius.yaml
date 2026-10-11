@@ -1,0 +1,31 @@
+id: adr:capability-exposes-blast-radius
+decision: >-
+  When a capability encapsulates SHARED MUTABLE STATE, the blast radius of that mutability
+  is part of its published contract: the capability names what may change under its
+  consumers' feet — at any time, from any adherent. Every adherent must then handle the
+  declared blast radius: the consuming decision records how that tool stays effective when
+  the shared state changes externally. The capability sets the obligation, never the
+  handling — each adherent decides its own — but an adherent with no such decision is
+  non-compliant.
+rejected:
+  - >-
+    mutability as an implementation detail the contract omits — each consumer then
+    discovers the deletion case by bug report, one tool at a time
+  - >-
+    the capability dictating one handling for every consumer — tools' needs genuinely
+    differ; the contract owns the exposure, the adherent owns the response
+  - >-
+    ad-hoc handling without a recorded decision — unruled handling is indistinguishable
+    from unhandled
+links:
+  domain: adr
+context:
+  why: >-
+    ruled 2026-10-04 (user-directed, StageDoor tasks/099 callback walk): the roles
+    capability's shared set is editable from any attached tool, so a role can vanish under
+    a callback's assignments — "the capability itself has to expose the blast radius of
+    that shared state, and every decision that adheres to that capability has to handle
+    that blast radius." Proving instance: StageDoor's roles capability — the run keeps
+    stored names on considered-for picks; the callback keeps stored names on role facts
+    and materials
+  src: StageDoor tasks/099 walk session 2026-10-04

@@ -1,0 +1,23 @@
+id: eng:code-cites-its-decisions
+decision: >-
+  Code carries references to the decisions it realizes — the same binding
+  convention tests already use — and every cited id must resolve. The code lens
+  derives its attribution from those bindings: "what changed because this
+  decision changed" is read from the cited code plus its diff, never from an
+  agent's narrative of what it did.
+rejected:
+  - >-
+    commit correlation as the attribution ground truth — a ledger commit followed
+    by code commits says when, not what-for, and refactor commits smear it
+  - >-
+    the regenerating agent reporting its own attribution — logs written from the
+    plan have shipped phantom fixes before (eng:rewrite-over-patch); the binding
+    survives in the artifact, the narrative does not
+links:
+  domain: eng
+context:
+  why: >-
+    "the code can carry references to the decisions" — probe round one, finding
+    five; extends the test-to-decision binding convention (eng:ledger-sole-record)
+    to the code the ui:read-only-code-lens reads
+  src: ui product-tree session 2026-10-08; regeneration probe round one

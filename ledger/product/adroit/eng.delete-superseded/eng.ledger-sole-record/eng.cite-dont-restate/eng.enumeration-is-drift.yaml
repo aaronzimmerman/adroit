@@ -1,0 +1,33 @@
+id: eng:enumeration-is-drift
+decision: >-
+  A record never enumerates other rules — no closed lists of sibling rulings, no counts of
+  doors, postures or kinds declared ahead of time. The set of rules IS the tree: it is derived
+  by reading, never maintained as a list inside one record. An enumeration is a second copy of
+  the set with a single author, so it drifts the moment any member changes and creates tension
+  inherently — every addition becomes a meta-record edit, and the list's count acquires false
+  authority of its own. A record states its OWN rule and cites what it builds on
+  (eng:cite-dont-restate); what else exists beside it is the reader's to derive.
+  A record MAY count or list its OWN parts — the levels, options or states its own rule
+  defines ("two access levels") — because those change only when the record itself does;
+  the bar is counting or listing OTHER records.
+rejected:
+  - >-
+    taxonomy records that name "exactly N" members — both proving instances were downstream:
+    a door budget whose count carried no business value (deleted), and a posture list whose
+    every new public read forced a meta-record edit (split into children)
+  - >-
+    enumerating for the reader's convenience — the explorer and the dump derive the set from
+    the tree for free; convenience copies are where the drift lives
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    ruled 2026-10-08 (user-directed, StageDoor auditions coherence pass) — "rules should not
+    restate or enumerate rules in such a manner, it is drift and creates tension inherently";
+    proving instances the same session: srch:three-doors-out deleted (no value in declaring
+    how many entry points ahead of time), srch:visibility-per-posture split (postures became
+    their own rulings, the parent keeps only the single-resolver principle)
+  src: >-
+    StageDoor tasks/099 auditions pass 2026-10-07/08; own-parts clarification 2026-10-10
+    (user-confirmed, counted-language skip-list)

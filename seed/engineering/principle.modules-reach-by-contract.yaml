@@ -1,0 +1,23 @@
+id: principle:modules-reach-by-contract
+decision: >-
+  Entities from one module never leak into another module's entities — globally. The
+  only cross-module reach is a DECLARED link or capability in the module's interface;
+  everything else, a module's concepts do not exist outside its own scope. Even a
+  NEGATIVE reference is creep: a record saying "knows no X" imports the concept of X
+  into a tree that should have no word for it. A concept lives only inside the module
+  that owns it, and other modules neither hold it, serve by it, nor disclaim it.
+rejected:
+  - >-
+    defensive negative references ("this module knows no X") — the mention is the leak;
+    the guard belongs here, stated once, not restated per tree
+  - >-
+    convenience joins across modules outside the declared links — the monolithic-entity
+    gravity this principle exists to resist: one container entity accreting every
+    module's concepts, which takes a remodel to tease apart
+links: {}
+context:
+  why: >-
+    de-skinned from a tool-entity ruling: a monolithic entity that accreted every
+    module's concepts took a remodel to tease apart, so cross-module reach is contract
+    only
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:tool-entities-insulated)

@@ -1,0 +1,21 @@
+id: eng:human-ruling-binds
+decision: >-
+  A recorded human judgment binds later automation: when a person has ruled on a question
+  and the ruling is recorded, any automated re-check of the same question defers to it —
+  never a silent re-litigation. The judgment's scope is exactly the question ruled (the
+  same subject against the same match); a different question, or new evidence outside the
+  ruled scope, is checked fresh.
+rejected:
+  - >-
+    re-judging on every pass — the human's review evaporates and the same case boomerangs
+    back to them forever
+  - >-
+    blanket deference after one ruling — an old judgment silently covers questions the
+    person never saw
+links:
+  domain: eng
+context:
+  why: >-
+    an automated check re-run on every pass re-litigated approvals an operator had already
+    recorded, sending settled cases back to them forever
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:human-ruling-binds)

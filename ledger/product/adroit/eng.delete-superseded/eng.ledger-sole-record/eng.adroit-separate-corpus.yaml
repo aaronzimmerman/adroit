@@ -3,8 +3,10 @@ decision: >-
   Adroit's own decisions — how decision systems work: the encoding, the lifecycle, the audit, the
   classifiers — form a separate corpus from any application's, and it lives in adroit's own
   repository. An adopting application's ledger holds that application's decisions, including its
-  rulings about its own ledger practice, never adroit's: it cites adroit's ids in prose and never
-  links to them, and nothing in adroit's corpus links down into an application.
+  rulings about its own ledger practice, never adroit's: it cites adroit's decision ids in prose and
+  never links to them, and nothing in adroit's corpus links down into an application. Principles
+  are the exception in one direction: adroit's principles are ambient in every adopting corpus
+  (adr:principles-are-ambient), so an application may cite one by link.
 rejected:
   - >-
     filing adroit's rules under the application's engineering tree — they would ship with
@@ -13,10 +15,6 @@ rejected:
     cohabiting the application's repository — the convenience the pilot ran on, but it left
     adroit governing one project's ledger rather than its own; the load test is adroit run on
     itself (user, 2026-09-28)
-  - >-
-    adroit's principles as universally citable across the boundary — once the corpora live in
-    separate repositories a cross-repo link cannot be checked, so a principle one side needs is
-    cited in prose (the StageDoor principles this corpus leaned on stayed downstream)
 links:
   domain: eng
   module: ledger-authoring
@@ -36,4 +34,9 @@ context:
     and nothing in the instance’s trees points in, so the corpus is extractable; extracted
     2026-09-28 (user-directed): the corpus left StageDoor's ledger/adroit/ root for this
     repository's product tree under story:adroit; cohabitation retired and the principle
-    exception with it
+    exception with it. Later the same day (user ruling): principles became ambient, so the
+    rejected alternative "adroit's principles as universally citable across the boundary" was
+    adopted for adroit's principles and dropped from rejected — its reason (a cross-repo link
+    cannot be checked) no longer holds once a principle id cannot dangle. Application principles
+    still never bind upstream, so the StageDoor principles this corpus leaned on stay demoted
+    to context notes

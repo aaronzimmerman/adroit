@@ -1,0 +1,23 @@
+id: eng:extend-dont-parallel
+decision: >-
+  Every feature names what it REUSES and what it DELETES, and extending an existing
+  mechanism beats adding a parallel one. Line count is a cost weighed at review: the
+  wanted curve is marginal cost per feature FALLING as the platform matures, and a feature
+  whose cost didn't fall is a signal that a shared mechanism is missing — consolidation of
+  mechanisms, not DRY worship. Periodic net-negative passes (simplify sweeps, dead-feature
+  removals) are standing work, not cleanup debt.
+rejected:
+  - >-
+    velocity without the ledger of reuse — each feature bringing its own migration,
+    endpoints, staging and UI compounds toward an unmaintainable base
+  - >-
+    DRY absolutism — deduplicating lines for its own sake couples code that merely looks
+    alike; the unit of consolidation is the MECHANISM (one predicate, one control, one
+    entry point), not the line
+links:
+  domain: eng
+context:
+  why: >-
+    the concern is the trajectory of the codebase, answered by making reuse-and-deletion
+    a named review question rather than a hope
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:extend-dont-parallel)

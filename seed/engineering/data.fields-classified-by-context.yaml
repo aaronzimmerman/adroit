@@ -1,0 +1,12 @@
+id: data:fields-classified-by-context
+decision: >-
+  Records read across trust contexts classify every field by visibility context, enforced
+  by a build-time forcing function.
+rejected: []
+links:
+  domain: data
+context:
+  why: >-
+    one record serialized to several audiences leaks fields to the wrong one unless each
+    field is classified by who may see it and the classification is mechanically forced
+  src: adroit seed v1, distilled from StageDoor's ledger (data:fields-classified-by-context)

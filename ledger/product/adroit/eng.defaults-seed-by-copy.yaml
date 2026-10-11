@@ -1,0 +1,32 @@
+id: eng:defaults-seed-by-copy
+decision: >-
+  Adroit ships a SEED: a set of default engineering records known to work with the
+  methodology. An adroit-backed engineering tree starts by COPYING seed records in
+  as the project's own decisions — never by referencing them implicitly. Once
+  copied they are the project's: contextualized to its needs or reversed outright
+  with the compelling reason recorded, like any record. The seed is not part of
+  adroit's own corpus — adroit distributes it the way it distributes tools, and
+  seed records bind nobody until a project copies them.
+rejected:
+  - >-
+    defaults binding ambiently the way principles do — ambience is reserved for
+    value judgments; a practice a project may reverse cannot bind implicitly, or
+    divergence becomes invisible
+  - >-
+    referencing the upstream defaults instead of copying — a project's ledger holds
+    its own decisions (eng:adroit-separate-corpus), and a record you don't own is a
+    record you cannot contextualize or reverse
+  - >-
+    every project starting its engineering tree empty — re-deriving settled
+    practice per project re-litigates what the defaults already settled
+links:
+  domain: eng
+context:
+  why: >-
+    "we should consider the start of an engineering project to just load
+    engineering best practices... minted as defaults that can be either
+    contextualized differently based on the needs of the project or even reversed
+    ... It's not a part of ADROIT itself. It is a seed of an ADROIT-backed
+    engineering tree" — first seed distilled from StageDoor's 60 engineering
+    records (37 portable, 18 with portable cores)
+  src: ui product-tree session 2026-10-07

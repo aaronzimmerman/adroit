@@ -1,0 +1,18 @@
+id: eng:map-on-gpu-canvas
+decision: >-
+  Continuous-space views — the star map and its kin — render through a GPU-backed
+  canvas, never as DOM nodes. The DOM is for prose surfaces: the expanded record
+  overlay, forms, search results.
+rejected:
+  - >-
+    a DOM node per decision — a fractal view with fly-around pans and deep zoom
+    re-layouts thousands of nodes per frame and chokes exactly when the ledger grows
+    enough to need the map
+links:
+  domain: eng
+context:
+  why: >-
+    ui:explore-as-star-map and ui:collapse-to-named-wholes demand continuous zoom
+    over an unbounded tree; the split (canvas for space, DOM for prose) follows
+    ui:full-record-expands-in-place's reading/flying distinction
+  src: ui engineering session 2026-10-08

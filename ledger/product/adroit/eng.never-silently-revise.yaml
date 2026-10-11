@@ -15,9 +15,11 @@ rejected:
     expensive and dulls the guard where it matters
 links:
   domain: eng
+  grounds: ["principle:scrutiny-follows-dependence"]
 context:
   why: >-
     decisions endure only if a later request cannot quietly overwrite them; stated in adroit's
-    CLAUDE.md protocol with no record holding it. The dependence measure mirrors StageDoor's
-    principle:scrutiny-follows-dependence, which stays downstream and is cited here in prose only
+    CLAUDE.md protocol with no record holding it. The dependence measure is
+    principle:scrutiny-follows-dependence's — cited in prose while that principle lived downstream,
+    restored as a grounds link when it moved upstream (2026-09-28, adr:principles-are-ambient)
   src: CLAUDE.md walk, adroit-ledger-upstream migration 2026-09-28

@@ -1,0 +1,45 @@
+id: ui:dubious-is-recorded
+decision: >-
+  Dubiousness is a field on the record: present, holding one line saying why the
+  record is suspect; absent when it is not. It is set two ways. The commit that
+  edits or moves a decision writes it onto every suspect in the same atomic act,
+  naming the record whose change made it suspect. A person sets it by hand when
+  they observe a contradiction, stating what they saw. However it is set,
+  marking a record dubious marks all of its refinement descendants dubious too,
+  each naming the marked ancestor as its reason. A record that is already
+  dubious and gains another cause keeps every reason: the new cause is added to
+  its line, never put in place of the old one. It clears when someone reads
+  the record through and either edits it or confirms it, and confirming means
+  removing the field and committing that removal. Clearing never cascades: each
+  descendant stays dubious until it is worked itself. The mark, its reason and
+  its clearing all travel in git with the branch.
+rejected:
+  - >-
+    dubiousness derived from git timestamps and never stored (this rule's first
+    form) — a contradiction a person notices has no timestamp to derive it from,
+    so the derived form could not express the manual mark; and clearing needed a
+    contrived provenance line to move a timestamp
+  - >-
+    confirmations or marks kept outside git (UI memory or a machine-local file) —
+    the mark dies with the machine, and the team cannot see what is suspect or
+    who cleared it
+  - >-
+    a bare boolean — the next reader is owed why the record is suspect; the
+    reason names the changed record or the observed contradiction
+  - >-
+    a later cause replacing the existing reason — the reviewer would see only
+    the latest change and miss the earlier one it is still suspect for
+  - >-
+    clearing a mark cascading to the descendants — confirming a parent says
+    nothing about whether each child still holds; every record is worked on its
+    own
+links:
+  domain: ui
+  tension: ["principle:derive-dont-materialize"]
+context:
+  why: >-
+    "let's make it a field after all. That way a person can also set it manually
+    if a contradiction is observed"; the one-line reason over a bare flag was a
+    below-the-bar call. The tension is deliberate: the automatic mark could be
+    derived, but the manual one cannot, and one mechanism carries both
+  src: build round one gap walk, 2026-10-10 (user-directed); builder gap three

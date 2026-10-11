@@ -1,0 +1,12 @@
+id: eng:one-transition-entry-point
+decision: >-
+  Every model-to-model transition has exactly one named service entry point owning the
+  whole mutation and side effects.
+rejected: []
+links:
+  domain: eng
+context:
+  why: >-
+    two entry points for one transition are two silently diverging definitions of one
+    decision — every multi-path mutation audited had drifted
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:one-transition-entry-point)

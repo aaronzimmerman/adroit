@@ -1,0 +1,40 @@
+id: eng:changes-are-projectable
+decision: >-
+  A pending model change is a NORMALIZED, machine-readable set of field changes,
+  filed in the pending-changes directory under the models root. Any tool — the UI,
+  a working agent — projects it onto the model at read time to see the ruled shape
+  beside the deployed one, so the migration's from-what-to-what is readable at any
+  moment, and that two-state view is the model layer's NORMAL working state while
+  a migration is pending. Landing applies the whole change as one act and deletes
+  it. Rulings have no counterpart: a decision record is point in time, never
+  staged, never update-tracked — the working tree is its only in-flight form and
+  source control its only history.
+rejected:
+  - >-
+    a branch as the only representation of a pending change — both states cannot
+    be read from one working copy at once, and the UI must show
+    this-is-X-but-becomes-Y side by side
+  - >-
+    the dirty working tree as the pending change — unnormalized edits carry only
+    the result; an agent reading them cannot recover the intent or scope of the
+    migration
+  - >-
+    projection as the normal working view for ordinary rulings (this record's
+    first breadth) — "when we make a ruling that is a point in time — this is the
+    way it is determined to be"; versioned ruling layers would reintroduce the
+    decision states the corpus rejected
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    "we have to be able to represent multiple simultaneous states... apply those
+    changes to the tree to get the result" — the enduring staged state is the
+    model layer's because a database change costs a migration
+  src: ui product-tree session 2026-10-08 (user-directed)
+  revision: >-
+    2026-10-08, three moves in one day: minted broad (every ledger edit a
+    projectable proposal in a top-level changes area); scoped to the model layer
+    in the StageDoor session via an inline SCOPE clause; rewritten whole when the
+    user caught that clause as embedded history (eng:decision-states-the-present)
+    and the pending home moved under models

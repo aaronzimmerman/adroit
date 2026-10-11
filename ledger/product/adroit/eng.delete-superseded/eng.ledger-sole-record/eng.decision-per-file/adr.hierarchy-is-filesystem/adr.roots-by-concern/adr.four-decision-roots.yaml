@@ -1,17 +1,26 @@
 id: adr:four-decision-roots
 decision: >-
-  A ledger directory holds exactly four decision roots — product, capabilities, models,
-  engineering — beside the domains registry, and nothing else (usage telemetry lives outside the
-  ledger directory — eng:log-ledger-interactions). A
-  project's rulings about its own ledger practice are engineering records; the methodology's own
-  decisions are never a root of an adopting project's ledger.
+  A ledger directory holds at most four roots — the decision roots product, capabilities and
+  engineering, and the models directory, which describes the implementation rather than deciding
+  (adr:roots-by-concern) — beside the domains registry, and nothing else at the top level (usage
+  telemetry lives outside the ledger directory — eng:log-ledger-interactions). Within the models
+  directory, a pending-changes directory holds the model layer's pending changes — the one staged
+  state that endures, scoped under models because that is the only layer with one. A
+  corpus opens only the roots it has records for; an absent root is an empty one, never a
+  different shape. A project's rulings about its own ledger practice are engineering records; the
+  methodology's own decisions are never a root of an adopting project's ledger.
 rejected:
   - >-
     a fifth root in each project for the methodology's corpus — it made every adopter carry a copy
     of adroit's decisions and left adroit governing someone else's ledger instead of its own
   - >-
     tolerating extra directories the tooling skips — a record filed there passes the check
-    unexamined
+    unexamined; the models pending directory is not this: it is a declared shape the check
+    examines on its own terms
+  - >-
+    a top-level changes area for proposals in flight (added and removed 2026-10-08) — once
+    projection was scoped to the model layer and rulings became point-in-time commits, it held
+    nothing for rulings, and what remained was model-scoped and belongs under models
 links:
   domain: adr
 context:
@@ -20,3 +29,11 @@ context:
     directories in the ledger directory"); the StageDoor ledger dropped its adroit/ root the same
     day and its check now fails a stray directory
   src: user ruling 2026-09-28; adroit-ledger-upstream migration; interactions-local-log 2026-09-28
+  revision: >-
+    2026-09-28: "holds exactly four" read as requiring all four, which adroit's own corpus never
+    met; reworded so the four are the ceiling. 2026-10-08, twice: the changes area admitted in the
+    morning for projectable proposals, then withdrawn the same day when projection was scoped to
+    the model layer (eng:changes-are-projectable) and the pending home moved under models ("a
+    pending changes directory under models itself since it is so scoped" — user). 2026-10-10: the
+    models directory is named as the implementation description rather than a decision root
+    (adr:roots-by-concern); the id keeps its name

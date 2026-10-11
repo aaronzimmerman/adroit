@@ -1,0 +1,12 @@
+id: principle:single-resolver
+decision: >-
+  One rule, one place — a rule that recurs is defined once (one resolver, one predicate,
+  one registry) and every consumer routes through it; never a parameter that changes the
+  rule.
+rejected: []
+links: {}
+context:
+  why: >-
+    duplicated rules diverge silently — one name meaning two durations, hand-copied
+    predicates drifting, second-copy bugs invisible to every gate
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:single-resolver)

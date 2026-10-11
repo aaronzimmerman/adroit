@@ -1,0 +1,21 @@
+id: ui:roots-get-native-treatments
+decision: >-
+  Each root is presented in a form native to its shape, not forced into one
+  uniform view: a product tree's deep refinement hierarchy gets the star-map
+  treatment; engineering reads as a field of small peer trees, independently
+  specified; models read as contracts with actual fields, not decision trees.
+  How capabilities present is deliberately unruled for now.
+rejected:
+  - >-
+    the whole ledger as one undifferentiated space with the roots as regions —
+    a uniform treatment flattens exactly the structural differences (deep
+    hierarchy vs. peer groves vs. field contracts) that distinguish the concerns
+links:
+  domain: ui
+context:
+  why: >-
+    "the four sections are different enough that they warrant their own UI
+    treatments. The product trees will be very hierarchical, whereas the
+    engineering trees could be more independently specified... and the models
+    would be an entirely different thing with actual fields instead of decisions"
+  src: ui product-tree session 2026-10-07

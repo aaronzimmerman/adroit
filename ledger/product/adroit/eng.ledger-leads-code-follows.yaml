@@ -1,0 +1,24 @@
+id: eng:ledger-leads-code-follows
+decision: >-
+  Changing a decision edits the ledger first, at any time — there is no freeze phase, and
+  code being out of step is never a reason to hold a ledger change back. Bringing the code
+  into compliance is its own follow-up act: the gates that bind code to decision ids go red
+  the moment the ledger moves, and that red IS the enumerated worklist — never a blocker on
+  deciding. Breaking the build by ruling is normal operation, not an exception.
+rejected:
+  - >-
+    code-compatibility as a precondition for ledger edits (keeping a superseded record
+    alive because code still cites it) — the store stops being the sole record of what was
+    decided and starts mirroring the code's lag
+  - >-
+    a declared rework phase during which the binding gates are suspended — it is not a
+    phase; adjusting a decision and then bringing the code up to it is the standing loop
+links:
+  domain: eng
+context:
+  why: >-
+    ruled 2026-10-02 (user-directed, during StageDoor's tasks/099 product-tree walk): a
+    retired record was held back from deletion because a code-binding test would redden —
+    "we are breaking the build on purpose… it's not even a special phase: I'll adjust a
+    decision and say 'I've changed this', and that's bringing the code up to compliance"
+  src: StageDoor tasks/099 walk session 2026-10-02

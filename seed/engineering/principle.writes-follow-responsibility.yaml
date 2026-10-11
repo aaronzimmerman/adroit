@@ -1,0 +1,22 @@
+id: principle:writes-follow-responsibility
+decision: >-
+  Writes follow responsibility: an actor edits only the data it is responsible for. A
+  person's authored words are theirs — other hands read them, never rewrite them. A tool
+  writes the data the tool itself is responsible for — it creates its own records and
+  sets its own marks, never touching another tool's records or a person's profile or
+  account. The write-side twin of principle:trust-context (which classifies who may
+  READ): reads are granted by audience, writes by responsibility.
+rejected:
+  - >-
+    editability as the default with carve-outs per surface — every new surface
+    re-litigates what it may touch; the ambient rule answers before the question forms
+  - >-
+    authorship rules stated per tool (immutable records here, author-private notes
+    there, delete-only elsewhere) — several local expressions of one idea, invisible as
+    a rule to any tree read alone
+links: {}
+context:
+  why: >-
+    the per-surface editability question should never be askable — a tool can edit the
+    data the tool itself is responsible for
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:writes-follow-responsibility)

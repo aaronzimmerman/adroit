@@ -1,0 +1,22 @@
+id: data:migration-priced-by-disruption
+decision: >-
+  A schema migration is priced by the model's disruption tolerance, not by a blanket rule:
+  a model with no production data and no deployed reader is reshaped in place — columns
+  dropped, types changed, freely. The two-phase discipline begins the moment production
+  holds data or a deployed reader depends on the shape; from then on every rename, drop,
+  and type change spans two releases.
+rejected:
+  - >-
+    two-phase for everything — a greenfield table shaped wrong in testing gets dutifully
+    migrated in two phases with nothing to migrate, the ceremony delaying exactly the
+    iteration a greenfield model exists for
+  - >-
+    in-place for everything — staging runs new migrations before production code updates,
+    so a populated model reshaped in one release breaks the running readers
+links:
+  domain: data
+context:
+  why: >-
+    the criterion is production data or deployed readers, never the table's age — ceremony
+    below the tolerance threshold buys nothing and costs iteration speed
+  src: adroit seed v1, distilled from StageDoor's ledger (data:migration-priced-by-disruption)

@@ -1,0 +1,83 @@
+id: eng:commitments-endure-until-canceled
+decision: >-
+  A COMMITMENT is declared on a record with an ID and a DESCRIPTION — one atomic
+  declaration per entry, never a bundle — and binds the record's entire subtree
+  silently: silence is inheritance, never an unanswered obligation. A descendant
+  touches an inherited commitment in exactly two ways, each by its id. ADHERENCE
+  enriches: one line on how this decision plays out under that commitment —
+  written only where there is something to say, never owed. NEGATION cancels: the
+  id with a flag, and it is ONE-WAY — below the negating record the id cannot be
+  re-declared. A declaration states its SEVERABILITY: severable by default (a tier
+  is rightly negated where Premiere begins), while a declaration marked
+  unseverable — a data-privacy promise — admits no negation anywhere beneath it,
+  and tooling treats such a negation as a hard incoherence, not a ruling.
+  Commitments also flow through INCORPORATION: a root that consumes a capability
+  inherits that capability's commitments as if declared on the root itself — one
+  declaration on the shared contract binds every tree that buys in, and the
+  direction stays the consumer's. All of it is load-bearing and lives in the record it concerns,
+  never a parallel tree: tooling derives a record's effective set and the lens
+  views ("this tree on mobile", "this tree as a guest") by walking the tree, and
+  validates that adherence and negation name an in-force id, that no record
+  carries both for one id, and that nothing declares beneath a negation.
+rejected:
+  - >-
+    no modeled handle — the enduring condition as an ordinary ancestor decision
+    (the contexts-are-aspects ontology, reconciled 2026-10-08): right that
+    inheritance is silent, wrong about the handle — without an id the tooling
+    cannot extract effective sets, validate negation, or key adherence
+  - >-
+    a separate aspects: deviation block beside an uncommits: list (the first
+    reconciled form, hours old) — two fields and two verbs for one interaction
+    vocabulary, and "deviation" read negative where the content is how a decision
+    HONORS the commitment in its context
+  - >-
+    mandatory per-child adherence (every child stating how it honors each
+    commitment) — a boilerplate tax on every future record; the default
+    propagates through silence
+  - >-
+    one grouped statement ("supports mobile and desktop") — negating part of a
+    bundle forces rewording the whole; atomic entries sever independently
+  - >-
+    re-declaring a negated id further down — a flip-flopping constraint makes the
+    effective set at a leaf unknowable without walking every ancestor's
+    arguments; one-way negation keeps the walk monotone
+  - >-
+    commitments or their enrichments as prose inside decision text — unparseable
+    for lens views and one wording drift from ambiguity
+  - >-
+    a parallel context tree ("how the whole thing works on a phone") mirroring
+    the feature tree — entanglement plus duplicated state that rots when the
+    referenced ruling changes
+  - >-
+    permissions as a separate decision tree — actor kinds are commitments over
+    the same decisions: one record, adherence where ramifications differ by kind
+  - >-
+    a commitments root or registry — the declarations live on the records that
+    make them; a registry is enumeration (eng:enumeration-is-drift)
+  - >-
+    restating a shared contract's promises as declarations on each app root — three
+    copies of one promise drift; incorporation carries the single declaration to
+    every tree that consumes the contract
+  - >-
+    every commitment severable — "there are some constraints that we want to make
+    sure always enforced like data privacy"; severability belongs to the
+    declaration, not to the negating descendant
+  - >-
+    the name "contexts" (the field's first name) — one letter from the context
+    block and opposite in force: one binds everything beneath it, the other binds
+    nothing
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    "a commitment has four attributes: ID and description at the root level; then
+    child decisions can have adherence and negation, both by ID, negation just a
+    flag" — the unified vocabulary, confirmed 2026-10-08, folding the deviations
+    record (adr:deviations-ride-commitments, deleted) into this one; born across
+    two sessions the same day: the StageDoor hub pass supplied co-location, lens
+    views and the parallel-tree loser, this session supplied the id handle,
+    atomicity and one-way negation
+  src: >-
+    ui product-tree session 2026-10-08 (user-directed); StageDoor tasks/099 hub
+    pass 2026-10-08; cross-session reconciliation and fold, same day

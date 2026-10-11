@@ -1,0 +1,16 @@
+id: ui:change-shows-implications
+decision: >-
+  When a user changes a decision, they can see the implications of that change —
+  the dependents measured from the graph, put in front of them at the moment of
+  change rather than discovered afterward. How the implications present is
+  deliberately unruled.
+rejected: []
+links:
+  domain: ui
+  grounds: ["principle:scrutiny-follows-dependence"]
+context:
+  why: >-
+    stated at need level on purpose — asked to choose between a named list and a
+    map treatment, the user ruled only the need: "when a user changes a decision,
+    they can see an implication of such a change"
+  src: ui product-tree session 2026-10-07

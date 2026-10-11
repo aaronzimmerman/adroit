@@ -1,0 +1,13 @@
+id: ui:see-the-ledger
+decision: >-
+  A user can see the ledger whole and find their way to any decision: survey the full
+  shape at a glance, walk a tree's refinement hierarchy, move between the roots, and
+  locate a specific decision.
+rejected: []
+links:
+  domain: ui
+context:
+  why: >-
+    the seeing cluster of the use-case walk — bird's-eye view, tree walking, root
+    switching, and finding were named as distinct wants and cluster as one need
+  src: ui product-tree session 2026-10-06

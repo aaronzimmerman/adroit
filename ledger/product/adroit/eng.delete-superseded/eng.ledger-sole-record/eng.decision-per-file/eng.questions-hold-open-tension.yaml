@@ -1,0 +1,38 @@
+id: eng:questions-hold-open-tension
+decision: >-
+  A record may carry QUESTIONS: a list of one-line open questions, each
+  recording a tension in or around that decision that is not yet resolved. A
+  question that launches new work sits on the record that work would grow from.
+  A ledger with open questions is in good standing: the check reports them and
+  never counts them as faults. A question ends one of two ways, both by removing
+  its line: it is answered, by clarifying the decision or by minting the records
+  that resolve it, or it is dropped as unhelpful. While it stays open it is
+  future work. A question says nothing about the ruling's validity, which is
+  what dubious says (ui:dubious-is-recorded); a ruling can be sound and still
+  carry questions. Asking or removing a question changes no rule, so it casts
+  no suspicion on anything (ui:edits-cast-suspicion).
+rejected:
+  - >-
+    a ledger whose stable state is fully resolved, no open tensions — a complex
+    system always carries tension; a ledger that can only hold settled rulings
+    either loses the tension or calls itself broken
+  - >-
+    questions as their own files in the tree — a second structure beside the
+    decision record; a question is an attribute of the decision it concerns
+  - >-
+    folding dubious into questions — dubious means the ruling's validity is not
+    assured; a question can sit on a sound ruling
+  - >-
+    asking a question casting suspicion like any other edit — the rule is
+    unchanged, so nothing that depends on it has reason to doubt it
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    "there will always be tensions and we need a way to record those tensions in
+    a deterministic consistent way that allows the ledger to still be useful";
+    "a question has to be on a decision itself so it's just another attribute of
+    a decision"; "a question can be a product launching point". Plain one-line
+    entries were a below-the-bar call (basic utility first)
+  src: build pass two gap walk, 2026-10-10 (user-directed), arising from gap five

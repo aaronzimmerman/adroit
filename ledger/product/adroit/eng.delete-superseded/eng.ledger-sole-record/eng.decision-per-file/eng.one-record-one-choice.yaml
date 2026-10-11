@@ -1,0 +1,38 @@
+id: eng:one-record-one-choice
+decision: >-
+  A record holds ONE independently reversible choice. If a clause could be reversed while
+  the rest of the record stands, it belongs in a child record; if the clauses only mean
+  anything together, they are one decision. Folding a new ruling into an existing record
+  is right only when it sharpens the same choice — otherwise it buries a decision where
+  readers cannot see it branch, and the tree stops showing where clarification happened.
+  The test applies to what the USER says, too: one ruling spoken in a breath often holds
+  several reversible choices, and is minted as a small hierarchy, the governing choice as
+  parent and each dependent choice beneath it ("a form must be closed before it archives"
+  is its own record, never a clause inside the archive record). Atomic records make
+  contradiction structural: two records disagreeing means one choice was superseded, and
+  resolving it is DELETING that record whole (eng:delete-superseded), never editing a
+  clause out of a record that also carries choices still standing.
+rejected:
+  - >-
+    granularity by size or topic — a long record of one inseparable rule is fine; a short
+    record hiding two reversible choices is not
+  - >-
+    whole-aspect records that accrete clauses as rulings land (the shape rapid sessions
+    drift into) — each bolted clause is a decision made invisible
+  - >-
+    one massive decision for a whole tree — the benefit of the framework is seeing the way
+    decisions branch and require elaboration, so one point can change and everything
+    beneath it falls out
+links:
+  domain: eng
+context:
+  why: >-
+    ruled 2026-10-03 (user-directed, during StageDoor's tasks/099 walk): an organization
+    pass found five records holding multiple reversible choices after a day of rapid
+    folding; the split/fold test ("could you reverse this clause alone?") was the
+    heuristic that worked
+    Extended 2026-10-10 (user-directed, StageDoor arbitration): "a common problem... is when
+    we aren't splitting decisions into their own records... a contradictory decision should
+    just be deleting an entire file... sometimes a single decision made by the user should
+    be split into a hierarchy"
+  src: StageDoor tasks/099 walk session 2026-10-02/03; arbitration 2026-10-10

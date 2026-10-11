@@ -1,0 +1,20 @@
+id: ui:engineering-reads-at-a-glance
+decision: >-
+  The engineering view is measured by comprehensibility and utility: a user sees
+  the decisions and their children — the whole commons of small peer trees
+  surveyable, each rule and what refines it legible without excavation. Depth
+  mechanics serve that measure; the root's shape is many shallow trees, so
+  density of survey outranks spatial exploration.
+rejected:
+  - >-
+    importing the product tree's deep-zoom treatment wholesale — engineering's
+    trees are shallow and numerous; a treatment built for depth buries a commons
+    meant to be scanned
+links:
+  domain: ui
+context:
+  why: >-
+    "the goal should be comprehensibility and utility. We want to see the
+    decisions and their children" — ruled at need level; the probe's
+    canvas-vs-grid fork is resolved by the measure, not by picking a mechanism
+  src: ui product-tree session 2026-10-08; regeneration probe round two, finding eight

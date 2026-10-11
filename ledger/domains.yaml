@@ -1,3 +1,4 @@
 corpus: adroit
 adr: Adroit's own structure — how a decision store is laid out, bounded and classified.
 eng: Ledger practice — how agents and humans author, cite, change and audit the decisions.
+ui: The ledger UI product — what a user needs to do to understand and manipulate an adroit ledger.

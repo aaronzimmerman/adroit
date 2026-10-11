@@ -1,0 +1,22 @@
+id: ui:cross-root-is-a-cut
+decision: >-
+  Moving between roots is a clean cut, never simulated motion: following a
+  reference into another root — a model field to the decision that needs it, a
+  product decision to its capability — jumps to the target root's native
+  treatment, landed on the target. Continuous motion is promised only within a
+  treatment. Search travel obeys the same rule: a hit in another root lands as a
+  cut into that root's view.
+rejected:
+  - >-
+    one embedded universe where every crossing is continuous motion — there is no
+    honest path between unlike treatments (star space into a field-structured
+    contract), and faked continuity disorients worse than a cut
+links:
+  domain: ui
+context:
+  why: >-
+    "a clean cut is called for when it moves to another context — like if we move
+    from a database field to the decision it links to, there's no clean motion to
+    that, we jump instead to the product hierarchy view"; resolves the probe's
+    cross-root navigation finding
+  src: ui product-tree session 2026-10-08; regeneration probe round one, finding four

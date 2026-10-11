@@ -1,0 +1,14 @@
+id: data:migrations-out-of-order
+decision: >-
+  Every schema migration is additive and backward-compatible, and the runner is
+  configured so ordering cannot silently skip or break one: a migration numbered below
+  an already-applied migration still runs on next deploy.
+rejected: []
+links:
+  domain: data
+context:
+  why: >-
+    de-skinned from a runner-specific ruling: a default in-order runner silently skips
+    forever a lower-numbered migration landing after a higher one deployed, which once
+    broke production
+  src: adroit seed v1, distilled from StageDoor's ledger (data:migrations-out-of-order)

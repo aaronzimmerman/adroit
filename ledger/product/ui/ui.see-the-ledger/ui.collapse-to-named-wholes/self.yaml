@@ -1,0 +1,18 @@
+id: ui:collapse-to-named-wholes
+decision: >-
+  At any depth, a subtree presents as a named whole, and opening one yields the same
+  presentation one level down: the view is self-similar at every scale, so
+  understanding the whole ledger and understanding one decision's refinements are the
+  same act at different magnifications.
+rejected:
+  - >-
+    the whole graph expanded at once — macro structure drowns in nodes; the broad
+    strokes are exactly what an all-nodes rendering cannot show
+links:
+  domain: ui
+context:
+  why: >-
+    "the sub-trees collapse to 'solar systems' by name and this should be recursive,
+    like a fractal" — the same questions recur at every level, so the view that
+    answers them must too
+  src: ui product-tree session 2026-10-06

@@ -1,0 +1,11 @@
+id: principle:audit-memorialize
+decision: >-
+  Memorialize, never destroy silently — destructive domain actions leave a durable record
+  (soft-remove or audit row) with actor, time, and reason; reads filter, restores exist.
+rejected: []
+links: {}
+context:
+  why: >-
+    destructive actions should leave an attributable, reversible record instead of
+    vanishing
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:audit-memorialize)

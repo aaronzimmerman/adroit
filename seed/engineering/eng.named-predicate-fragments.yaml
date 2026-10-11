@@ -1,0 +1,12 @@
+id: eng:named-predicate-fragments
+decision: >-
+  A composite, high-blast-radius business-rule predicate that recurs is a named fragment on
+  its data-access class.
+rejected: []
+links:
+  domain: eng
+context:
+  why: >-
+    hand-typed copies of a recurring rule predicate diverge silently; a convention-applied
+    filter WILL be forgotten, a named fragment cannot be
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:named-predicate-fragments)

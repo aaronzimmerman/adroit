@@ -1,0 +1,29 @@
+id: principle:scrutiny-follows-dependence
+decision: >-
+  The scrutiny a change deserves scales with what depends on the decision, measured from the
+  graph — its refinement children and consumers — never asserted. Revising or reversing a
+  load-bearing decision is guarded: the dependents are named before anything changes, and the
+  confirmation happens against that list. A leaf decision changes freely and cheaply, as it
+  should. The tooling surfaces dependence at the moment of change, so the guard tightens as the
+  ledger matures rather than relying on anyone's discipline.
+rejected:
+  - >-
+    uniform change ceremony — guarding every decision equally makes leaves needlessly expensive
+    and dulls the guard exactly where it matters
+  - >-
+    guarding by age, seniority, or gut feel — dependence is measurable; a young decision many
+    records key off deserves more care than an old orphan
+links: {}
+context:
+  why: >-
+    user-directed 2026-09-25, drawn from the born-live misfire: "the user can publish and
+    unpublish at any time" is the kind of decision others key off, and its apparent reversal
+    deserved more guard than a leaf like an email page's click mechanics. Sibling of
+    weigh-disruption (that one prices migration ceremony by disruption tolerance; this one prices
+    decision-change scrutiny by measured dependence) and the read-side of adr:connectivity-classifies-trees's connectivity
+    spectrum
+  src: product-tree session 2026-09-25
+  revision: >-
+    2026-09-28 (user-directed): moved from StageDoor's engineering/ to adroit's once principles
+    became ambient (adr:principles-are-ambient) — it is methodology, how any adopting project
+    guards a change, not one project's adoption of it

@@ -1,0 +1,34 @@
+id: eng:ledger-knows-no-implementation-state
+decision: >-
+  Decision records declare decisions — simple and singular — and know nothing of their
+  implementation. No decision record, in its decision, rejected or context, says what code
+  must change, what is or is not built yet, or which code disagrees with it, and none points
+  at the models directory. That directory is the one place implementation state is described
+  — the deployed shape of models and views, and pending changes until their migrations land
+  (adr:models-memorialize-deployed-shape) — and it is not a decision tree (adr:roots-by-concern).
+  Any other gap between the decisions and the code is found by comparing the two, and belongs
+  to the build plan, never to the ledger.
+rejected:
+  - >-
+    code-task notes in a record's context ("the delete endpoint retires") — StageDoor
+    removed them from two dozen records on 2026-10-10; each went stale the moment either
+    side moved, and they invited every author to keep adding more
+  - >-
+    the rule scoped to every file in the ledger directory (this record's form until 2026-10-10)
+    — it would forbid the models directory's deployed shape and pending entries, which the user
+    kept: "We also don't want to get rid of the pending logic"
+  - >-
+    a compliance queue kept beside the rulings during ledger work — it mixes two phases;
+    the ledger is made coherent first, then compared with the code once
+links:
+  domain: eng
+context:
+  why: >-
+    ruled 2026-10-10 (user-directed, StageDoor arbitration): "the ledger can't have records
+    about how to make the code compliant... it should be in adroit's methodology. The ledger
+    cannot know anything about its implementation within itself. The ledger just declares
+    business decisions and it has to be simple and it has to be singular."
+  src: StageDoor tasks/099 arbitration 2026-10-10
+  revision: >-
+    2026-10-10, same day (user-directed): scoped to decision records — the models directory "is
+    not a decision tree, but a description of the at-rest models and the views"

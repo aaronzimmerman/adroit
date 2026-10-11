@@ -1,0 +1,23 @@
+id: adr:models-memorialize-deployed-shape
+decision: >-
+  A model record states the shape as it actually persists — deployed reality, the persistent
+  result of the decisions as they stood when the shape was paid for. Rules regenerate at will;
+  shape changes are priced in migrations, so the ledger memorializes what the decisions have
+  already cost into existence. When a ruling changes, the product record updates immediately but
+  the model updates only when the migration lands; until then the divergence between a field and
+  its governing ruling is surfaced as pending-migration — a visible incoherence, never hidden and
+  never papered over by editing the model early.
+rejected:
+  - >-
+    model records tracking the ruled FUTURE shape, with migration lag tracked elsewhere — the
+    record would claim a shape the store does not hold, forfeiting the memorial purpose and
+    leaving no honest place to read what is actually deployed
+links:
+  domain: adr
+context:
+  why: >-
+    ruled 2026-10-07 (user-directed, StageDoor models-root rework): "the models are a persistent
+    result of the decisions as they exist at a point in time. We have to memorialize the
+    implications of those decisions because changing them requires migrations"; deployed-reality
+    with surfaced divergence confirmed over ruled-future in the same exchange
+  src: StageDoor tasks/099 session 2026-10-07

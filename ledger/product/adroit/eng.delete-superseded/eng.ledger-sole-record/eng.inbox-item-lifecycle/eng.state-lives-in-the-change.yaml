@@ -1,0 +1,34 @@
+id: eng:state-lives-in-the-change
+decision: >-
+  Records hold no workflow state. A ruling's only in-flight state is the
+  uncommitted working tree: read as the working diff, gone at commit, never
+  tracked beyond it. The one staged state that ENDURES is the model layer's
+  pending change (model:change): born of a committed decision, existing in
+  multiple states until its migration lands, and carrying its own bookkeeping of
+  what is pending, against which decisions, from what shape to what shape. The
+  only condition a record itself carries is the dubious mark
+  (ui:dubious-is-recorded), which flags suspected incoherence; it is not a step
+  in any workflow.
+rejected:
+  - >-
+    workflow status fields on records (pending, in review, approved) —
+    eng:decision-per-file rejects them, and workflow state written into a record
+    outlives the work and reads as law long after the work ended
+  - >-
+    an enduring staged layer for ruling edits — rulings are point in time; source
+    control is their transaction and their archive, and a second in-flight
+    representation of a ruling is a second description of it
+links:
+  domain: eng
+  module: ledger-authoring
+context:
+  why: >-
+    "I don't want decisions to have a lot of state, but I think it's ultimately
+    going to be unavoidable" — the state that must endure is the model layer's,
+    because a database change costs a migration; everything else is the working
+    tree, apart from the dubious mark, which records a suspicion rather than a
+    stage of work
+  src: ui product-tree session 2026-10-08 (user-directed); scoping reconciliation same day
+  revision: >-
+    2026-10-10: the dubious mark carved out as the one condition a record carries,
+    when dubiousness became a recorded field

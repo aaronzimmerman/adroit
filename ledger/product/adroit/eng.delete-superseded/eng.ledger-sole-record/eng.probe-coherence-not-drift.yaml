@@ -1,0 +1,29 @@
+id: eng:probe-coherence-not-drift
+decision: >-
+  When an earlier-settled tree may disagree with the corpus as it now stands, the
+  instrument is a COHERENCE PROBE: a fresh agent reads the target tree plus the
+  ENTIRE live ledger and reports contradictions between live records. The frame is
+  never "what changed since" — a record is right or wrong against the ledger NOW,
+  and a curated changelog of moved ground is the author's session context smuggled
+  back in, the same flaw the regeneration probe's curation loser names
+  (eng:probe-the-regeneration-bar): anything the curator mislists goes unchecked.
+  History belongs in provenance; coherence is a property of the present corpus,
+  full stop.
+rejected:
+  - >-
+    drift audits framed on an enumerated list of newer ground — bounded and cheap,
+    but the enumeration is the frame, and its omissions are invisible precisely
+    where the check matters
+  - >-
+    waiting for the stale tree's own next walk — cross-tree incoherence compounds
+    silently in the meantime, and other walks build on it
+links:
+  domain: eng
+context:
+  why: >-
+    ruled 2026-10-07 (user-directed, StageDoor tasks/099 dashboard walk) when a
+    "drift audit" of the listing and run trees was framed on the author's list of
+    changed ground: "Is drift the right semantic? Seems like we should be able to
+    just ask about compliance full stop" — adopted as the standing instrument for
+    cross-tree checks
+  src: StageDoor tasks/099 walk session 2026-10-07

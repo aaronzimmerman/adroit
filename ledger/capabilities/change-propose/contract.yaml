@@ -1,0 +1,68 @@
+capability: change-propose
+version: 1
+summary: >-
+  Change a ledger corpus as units of work. A decision lands as ONE ATOMIC COMMIT
+  across every record it touches — source control is the transaction, and the
+  uncommitted working tree is a ruling's only in-flight state. What endures
+  staged is the model layer's pending change: set-model-field operations file a
+  pending change under the models root (model:change), projectable to read the
+  migration's from-what-to-what until it lands. Ceremony scales with scope — a
+  single-field edit commits in one act. The capability speaks only in records,
+  operations, commits and pending changes — never in any consumer's surfaces.
+operations:
+  create-record: >-
+    a new record — its id, its content (model:record), and its place in the
+    tree (the parent it refines; the path carries the relation)
+  edit-field: >-
+    one field of one existing record — decision, rejected, links, context,
+    commitments, dubious (setting it by hand, or removing it to confirm) or
+    questions (asking, answering or dropping one; this casts no suspicion).
+    The id is not in the editable set: a rename is a corpus-wide
+    rebind, not an edit, and this capability does not perform it
+  move-record: >-
+    an existing record to a new parent — re-parenting is a file move that the
+    path expresses; the record's content and id are untouched
+  publish-contract: >-
+    a capability's contract artifact, created or versioned — the operation a
+    promotion needs so an extracted capability is born carrying the interface
+    the capabilities root requires
+  set-model-field: >-
+    a model field's intended definition — add, change or remove — recorded as a
+    pending entry on the model file beside the deployed shape it will replace;
+    the deployed statement updates only when the migration lands, and the
+    divergence surfaces as pending-migration until then
+    (adr:models-memorialize-deployed-shape)
+  begin-migration: >-
+    moves named pending entries off the model file into a new model:change
+    under the models pending directory, which registers the migration in
+    flight; a pending entry lives in exactly one place at a time
+  land-migration: >-
+    the user's attestation that a migration in flight has shipped to the store —
+    the tool cannot observe a deployment, so landing is always user-initiated.
+    In one atomic act the model file's deployed shape takes the intended shape
+    for every field the change carries and the change file is deleted; a
+    refused landing changes nothing
+outputs:
+  commit: >-
+    the decision landed: all record operations validated against the record
+    shape (model:record) and committed as one act across every file they touch;
+    a refused commit writes nothing. The same act writes the dubious mark onto
+    every suspect the operations cast suspicion on that was not worked before
+    the commit, naming the record whose change made it suspect. Working state before the commit is the
+    working tree's diff, nothing else (eng:state-lives-in-the-change)
+  pending-change: >-
+    set-model-field leaves ruled divergence as pending entries on the model
+    file; begin-migration births the model:change registering the migration in
+    flight, carrying current and intended until it lands; projecting either
+    shows the model's ruled shape (eng:changes-are-projectable)
+not-offered: >-
+  delete-record is deliberately absent: supersession is deferred by its
+  consumers' rulings, and an operation nothing may legally invoke is a trap.
+  Adding it is a contract version bump.
+blast-radius: >-
+  Records are shared mutable state: any record may change at any time from any
+  adherent of this capability, and from outside it entirely (another session, a
+  git operation). Open proposals compound this — a projection can go stale
+  against a moved base. Every adherent must record how it stays effective when
+  the records or proposals it holds change under its feet
+  (adr:capability-exposes-blast-radius).

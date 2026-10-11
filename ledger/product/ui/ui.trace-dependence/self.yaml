@@ -1,0 +1,22 @@
+id: ui:trace-dependence
+decision: >-
+  A user can trace dependence from any point in the ledger: follow a decision's links
+  to the capability, model or view they consume, see every decision that adheres to a
+  capability, and see what a change to a record would affect.
+rejected: []
+links:
+  domain: ui
+  grounds: ["principle:scrutiny-follows-dependence"]
+context:
+  why: >-
+    the tracing cluster of the use-case walk; the whole cluster is the dependence
+    measure made visible at the moment of looking, which is what the principle says
+    the tooling must surface
+  src: ui product-tree session 2026-10-06
+  deferred: >-
+    pricing changes by principle:weigh-disruption's per-node tolerance is held
+    latent like the blast-radius handling — "let the product evolve towards
+    utility as it matures" (user 2026-10-08, probe round one finding seven)
+  revision: >-
+    2026-10-10: per-field usage weight removed from the cluster ("skip model field
+    usage for now")

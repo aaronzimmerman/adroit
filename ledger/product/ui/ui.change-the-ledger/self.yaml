@@ -1,0 +1,36 @@
+id: ui:change-the-ledger
+decision: >-
+  A user can change the ledger: revise a decision, edit a single field in place, add a
+  child that refines a decision, and extract an emergent capability — select the root
+  of the pattern, promote it to the capabilities root, and relink what consumes it.
+rejected:
+  - >-
+    reshaping (similarity, extraction) as a tree of its own beside editing — the user
+    ruled extraction is the same use case as editing: a bigger edit, not a different
+    need
+  - >-
+    notes on a decision — disposed of 2026-10-07: a prose margin channel beside the
+    record is the shadow-ledger risk eng:log-ledger-interactions already rejected, and
+    content worth keeping belongs in the record's own fields
+  - >-
+    surfacing similarity — convergent decisions visualized as common shapes before any
+    connectivity exists — scrapped 2026-10-07 as a nice-to-have, not core; extraction
+    stays a user-initiated act on a pattern the user already sees
+links:
+  domain: ui
+  consumes: ["change-propose"]
+context:
+  why: >-
+    the changing cluster of the use-case walk; superseding a decision is deliberately
+    deferred, not rejected — "maybe a use case but it seems more complicated to
+    include" (user 2026-10-06)
+  src: ui product-tree session 2026-10-06
+  revision: >-
+    2026-10-07: notes dropped, then similarity surfacing scrapped; rewritten whole
+    rather than patched again (eng:rewrite-over-patch)
+  deferred: >-
+    handling of change-propose's declared blast radius (what the UI does when a
+    record or open proposal changes under its feet) is shelved as enrichment, not
+    core (user 2026-10-07) — a conscious, recorded non-compliance with
+    adr:capability-exposes-blast-radius until it lands. The binding followed the
+    fold of decision-edit into change-propose (2026-10-08)

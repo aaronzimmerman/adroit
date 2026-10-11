@@ -1,0 +1,18 @@
+id: eng:typescript-end-to-end
+decision: >-
+  The UI is TypeScript end to end: one language for the server and the view, with
+  the record and contract shapes typed once and shared across the boundary.
+rejected:
+  - >-
+    different languages per side — the record shape would be declared twice, and the
+    two declarations drift exactly the way duplicated decisions do
+  - >-
+    untyped JavaScript — the whole product is the handling of one structured shape
+    (model:record); forgoing types on it discards the cheapest check available
+links:
+  domain: eng
+context:
+  why: >-
+    baseline blessed on recommendation — the user ruled the baseline open to
+    recommendation, with opinions reserved for methodology and practice
+  src: ui engineering session 2026-10-08

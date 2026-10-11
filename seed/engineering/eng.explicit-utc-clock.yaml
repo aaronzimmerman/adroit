@@ -1,0 +1,12 @@
+id: eng:explicit-utc-clock
+decision: >-
+  Server-side reads of the current date or time name their zone explicitly — UTC unless a
+  decision names another — never the machine's default zone.
+rejected: []
+links:
+  domain: eng
+context:
+  why: >-
+    zone-implicit "today" makes date boundaries across features disagree around midnight
+    and tests flake in any zone ahead of UTC
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:explicit-utc-clock)

@@ -1,0 +1,28 @@
+id: ui:all-but-id-editable
+decision: >-
+  Every field of a record is editable from the UI — the decision text, the
+  rejected list, the links, the context — except the id, which is not editable.
+  An id is the name every citation binds to; changing it is a corpus-wide rebind,
+  not an edit, and the UI does not offer it as one. The editable links are the
+  ones a record carries in its file: refines is not among them — the path carries
+  it, so re-parenting happens as a move operation in a proposal, never as a text
+  edit.
+rejected:
+  - >-
+    an editable id — a rename reads like a one-field edit but silently breaks
+    every citation bound to the name (adr:hierarchy-is-filesystem binds references
+    to names precisely so paths can move)
+  - >-
+    locking the dangerous-looking fields (links, rejected) as well — the guard
+    against a careless edit is the implications shown at the moment of change
+    (ui:change-shows-implications), not field locks
+links:
+  domain: ui
+  consumes: ["change-propose"]
+context:
+  why: >-
+    "The ID is not editable. Everything else is" — ruled on the question of where
+    editability draws its line; honors the change-propose contract by offering
+    exactly its edit-field set, with the id excluded on both sides (rebound from
+    the decision-edit contract when it folded in, 2026-10-08)
+  src: ui product-tree session 2026-10-07

@@ -1,0 +1,22 @@
+id: ui:links-explored-by-relation
+decision: >-
+  There is no global definition of what following a link does. Each link relation
+  is given one or more exploration treatments useful to that relation: consuming a
+  capability can show the capability's summary or root decision in place, without
+  travel; a capability's adherents can unfold as a hierarchy of their own, explored
+  as a tree rooted at the capability. A new relation earns its treatments by what
+  its tracing is for.
+rejected:
+  - >-
+    one universal link behavior — travel to the target — for every relation; it
+    forces a contract peek and an adherents unfold into the same act, and poses
+    false forks (cut vs. continuous transition) that only exist under uniformity
+links:
+  domain: ui
+context:
+  why: >-
+    "the overall decision here is that there is no global definition of a link,
+    each link is given one or more useful ways to explore the relationships"; the
+    UI-side mirror of adr:links-typed-by-relation — relations differ in meaning, so
+    they differ in exploration
+  src: ui product-tree session 2026-10-07

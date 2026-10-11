@@ -1,0 +1,35 @@
+id: eng:foreclose-the-edge
+decision: >-
+  When a rare edge case surfaces — technically possible, functionally irrelevant — do
+  not follow it through the chain of decisions it would require. Look for a clean
+  restriction that prevents the case from arising at all, and rule THAT, explicitly. The
+  record states the restriction, why the case is not worth supporting, and the bill for
+  reopening it: the questions that would have to be decided if the restriction is ever
+  lifted. Rigor is preserved — the decision is made, deliberately — while the walk stays
+  on the large-scale problems. The foreclosure is itself revisable, and the record
+  carries the context that revision would need.
+rejected:
+  - >-
+    following every 1% case through its consequences — time spent on irrelevant
+    branches is taken from the problems that matter, and each followed edge breeds
+    more edges
+  - >-
+    leaving the case unruled as latitude — an unmade decision is indistinguishable from
+    an overlooked one
+  - >-
+    marking decisions as "not worth making" — a non-ruling records nothing; a restriction
+    records a choice and its price
+links:
+  domain: eng
+context:
+  why: >-
+    ruled 2026-10-04 (user-directed, StageDoor tasks/099 callback walk) on whether
+    unlinking a run from a callback should end its audition context: "the time spent
+    considering the cases is poorly spent... when one percent edge cases pop up, we look
+    to find a clean way to prevent the context of that edge case rather than following
+    the case through the chain of decisions it requires. These decisions are then
+    subject to further revision in the future along with the context of those cases that
+    would have to be solved to do so. That kind of structure is exactly the advantage
+    that we get out of adroit." Sibling of eng:rejected-proves-deliberation: that
+    one keeps the losers; this one keeps the price of reopening
+  src: StageDoor tasks/099 walk session 2026-10-04
