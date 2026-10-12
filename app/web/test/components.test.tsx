@@ -1,338 +1,283 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { EngineeringView } from '../src/components/EngineeringView.jsx';
-import { GapsPanel } from '../src/components/GapsPanel.jsx';
-import { ModelsView } from '../src/components/ModelsView.jsx';
-import { RecordOverlay } from '../src/components/RecordOverlay.jsx';
-import { SearchPanel } from '../src/components/SearchPanel.jsx';
-import { SuspectsPanel } from '../src/components/SuspectsPanel.jsx';
-import { makeSnapshot } from './fixture.js';
+// @DecisionRef eng:frontend-test-harness — the view's components, driven as a user drives them.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import type { ChangeOutcome, ChangePreview } from '@adroit/shared';
+import { LedgerContext } from '../src/context.js';
+import { DetailsPanel } from '../src/components/DetailsPanel.jsx';
+import { FindingsList } from '../src/components/Findings.jsx';
+import { NavPanel } from '../src/components/NavPanel.jsx';
+import { Search } from '../src/components/Search.jsx';
+import { makeView } from './fixture.js';
 
-const snap = makeSnapshot();
+const view = makeView();
+let travel: ReturnType<typeof vi.fn>;
+let landed: ReturnType<typeof vi.fn>;
+let preview: ChangePreview;
+let calls: { url: string; body: unknown }[];
+
+const OUTCOME: ChangeOutcome = { ok: true, commit: 'a'.repeat(40), touched: [], suspects: [], marked: [] };
 
 beforeEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
+  travel = vi.fn();
+  landed = vi.fn();
+  calls = [];
+  preview = { suspects: [], touched: [] };
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: RequestInfo | URL) => {
+    vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
-      const body = u.startsWith('/api/impact')
-        ? {
-            id: 'x',
-            descendants: ['app:child-rule'],
-            consumers: ['app:consumer-rule'],
-            dependents: [],
-            moved: ['app:severed-zone', 'app:deep-leaf'],
-          }
-        : u.startsWith('/api/lens/citations')
-          ? { id: 'x', citations: [], axis: 'test' }
-          : { ok: true, committed: true, commit: 'a'.repeat(40), touched: [], suspects: [], markedDubious: [] };
+      calls.push({ url: u, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      const body = u.startsWith('/api/change/preview')
+        ? preview
+        : u.startsWith('/api/change')
+          ? OUTCOME
+          : u.startsWith('/api/search')
+            ? { query: 'x', hits: [{ place: 'product/demo/parent-rule', field: 'app:parent-rule · rejected 1', snippet: 'letting children rule', trail: ['product', 'Demo'] }] }
+            : u.startsWith('/api/lens')
+              ? { id: 'x', citations: [{ id: 'app:parent-rule', file: 'src/a.ts', line: 3, snippet: 'const a = 1;', fileLastChanged: 0, changedSinceDecision: true, diff: '+const a = 1;' }] }
+              : {};
       return new Response(JSON.stringify(body), { status: 200 });
     }),
   );
 });
+afterEach(() => cleanup());
 
-describe('RecordOverlay', () => {
-  it('shows the rule, the rejected losers and the context in place', () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:parent-rule" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
+const wrap = (ui: ReactNode) => render(<LedgerContext.Provider value={{ view, travel, landed }}>{ui}</LedgerContext.Provider>);
+
+describe('the navigation panel', () => {
+  it('shows the hierarchy from the roots down, and selecting a child makes it current', () => {
+    wrap(<NavPanel current="product/demo" expanded={new Set(['product', 'product/demo'])} onToggle={() => {}} />);
+    for (const r of ['product', 'capabilities', 'engineering', 'models']) expect(screen.getByRole('button', { name: r })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Parent rule' }));
+    expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
+  });
+
+  it('goes up a level from the current node', () => {
+    wrap(<NavPanel current="product/demo/parent-rule" expanded={new Set(['product', 'product/demo'])} onToggle={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /up a level/ }));
+    expect(travel).toHaveBeenCalledWith('product/demo');
+  });
+
+  it('marks rows with their findings, dubious marks and questions', () => {
+    wrap(
+      <NavPanel
+        current="product/demo"
+        expanded={new Set(['product', 'product/demo', 'product/demo/parent-rule'])}
+        onToggle={() => {}}
+      />,
     );
+    expect(screen.getByTitle('1 finding(s)')).toBeTruthy();
+    expect(screen.getByText('dubious')).toBeTruthy();
+    expect(screen.getByTitle('1 open question(s)')).toBeTruthy();
+  });
+
+  it('expands and collapses a place', () => {
+    const onToggle = vi.fn();
+    wrap(<NavPanel current="product" expanded={new Set(['product'])} onToggle={onToggle} />);
+    fireEvent.click(screen.getByRole('button', { name: 'expand Demo' }));
+    expect(onToggle).toHaveBeenCalledWith('product/demo');
+  });
+});
+
+describe('the details panel', () => {
+  // @DecisionRef ui:details-panel-right — decisions with rejected, the dubious mark, questions.
+  it('shows the node\'s decisions with their rejected alternatives, its mark and its questions', () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
     expect(screen.getByText('Parents rule broadly.')).toBeTruthy();
-    expect(screen.getByText(/letting children rule/)).toBeTruthy();
-    expect(screen.getByText('because')).toBeTruthy();
+    expect(screen.getByText('letting children rule — too chaotic')).toBeTruthy();
+    expect(screen.getByText("decision names 'app:x'")).toBeTruthy();
+    cleanup();
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
+    expect(screen.getByRole('note').textContent).toContain('"Parent rule" changed');
+    cleanup();
+    wrap(<DetailsPanel current="product/demo" />);
+    expect(screen.getByText('Does the demo need accounts?')).toBeTruthy();
   });
 
-  // @DecisionRef ui:commitments-always-visible — effective commitments, inherited no
-  // less than declared, each with its declaring record reachable.
-  it('shows inherited commitments with the declaring record reachable', () => {
-    const onTravel = vi.fn();
-    render(
-      <RecordOverlay snapshot={snap} id="app:child-rule" onClose={() => {}} onTravel={onTravel} onChanged={() => {}} />,
-    );
-    expect(screen.getByText('works-offline')).toBeTruthy();
-    expect(screen.getByText(/caches the demo list locally/)).toBeTruthy();
-    fireEvent.click(screen.getByText(/declared by story:demo/));
-    expect(onTravel).toHaveBeenCalledWith('story:demo');
+  // @DecisionRef ui:ancestors-grouped-by-ancestor — each ancestor's decisions under its name.
+  // @DecisionRef ui:severed-shown-marked — a severed decision still shows, marked.
+  it('groups the binding decisions by ancestor and marks the severed one', () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
+    const above = screen.getByRole('region', { name: 'binding from above' });
+    expect(within(above).getByRole('button', { name: 'Demo' })).toBeTruthy();
+    expect(within(above).getByRole('button', { name: 'Parent rule' })).toBeTruthy();
+    const severed = within(above).getByText(/Every surface works with no network/).closest('li')!;
+    expect(severed.className).toBe('severed');
+    expect(within(severed).getByText(/severed by/)).toBeTruthy();
   });
 
-  // @DecisionRef ui:commitments-always-visible — below a negation the commitment simply
-  // is not there: nothing about it appears.
-  it('shows no trace of a severed commitment below the negation', () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:deep-leaf" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    expect(screen.queryByText(/works-offline/)).toBeNull();
+  // @DecisionRef ui:capabilities-shown-summarized — summarized by the root's decisions.
+  // @DecisionRef ui:open-a-capability — and opened in the navigation panel from there.
+  it('summarizes each capability in scope by its root\'s decisions, with a way to open it', () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    const caps = screen.getByRole('region', { name: 'capabilities in scope' });
+    expect(within(caps).getByText(/The user is told when something happens/)).toBeTruthy();
+    expect(within(caps).getByText(/1 more decision in its tree/)).toBeTruthy();
+    fireEvent.click(within(caps).getByRole('button', { name: 'open capability notify' }));
+    expect(travel).toHaveBeenCalledWith('capabilities/notify');
   });
 
-  it('reads the negation at the negating record itself', () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:severed-zone" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    expect(screen.getByText(/negates/)).toBeTruthy();
-    expect(screen.getByText('works-offline')).toBeTruthy();
+  it('shows a capability\'s includers', () => {
+    wrap(<DetailsPanel current="capabilities/notify" />);
+    const inc = screen.getByRole('region', { name: 'included by' });
+    fireEvent.click(within(inc).getByRole('button', { name: 'Demo' }));
+    expect(travel).toHaveBeenCalledWith('product/demo');
   });
 
-  // @DecisionRef ui:two-depths-per-link — gist in context, and travel to full context.
-  it('every link offers the gist in place and travel to the full context', () => {
-    const onTravel = vi.fn();
-    render(
-      <RecordOverlay snapshot={snap} id="app:consumer-rule" onClose={() => {}} onTravel={onTravel} onChanged={() => {}} />,
-    );
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'app:parent-rule' }));
-    // depth one: the gist, in place
-    expect(screen.getByText('Parents rule broadly.')).toBeTruthy();
-    // depth two: travel
-    fireEvent.click(screen.getByText(/go to its full context/));
-    expect(onTravel).toHaveBeenCalledWith('app:parent-rule');
+  // @DecisionRef ui:models-read-as-fields — fields, deployed beside intended.
+  it('reads a model as its fields, deployed beside intended', () => {
+    wrap(<DetailsPanel current="models/model.widget.yaml" />);
+    expect(screen.getByText('scalar — how big')).toBeTruthy();
+    expect(screen.getByText('scalar — in millimetres')).toBeTruthy();
   });
 
-  // @DecisionRef ui:two-depths-per-link — a tension link's gist states the divergence.
-  it('a tension link gist states the divergence it marks', () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:deep-leaf" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'principle:single-resolver' }));
-    expect(screen.getByText(/the divergence: two places hold the leaf rule on purpose/)).toBeTruthy();
+  // @DecisionRef ui:read-only-code-lens — snippets and what changed, and nothing to edit code with.
+  it('opens the code lens on a decision', async () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    fireEvent.click(screen.getByRole('button', { name: 'code lens' }));
+    await screen.findByText('src/a.ts:3');
+    expect(screen.getByText('changed since the decision did')).toBeTruthy();
+    expect(screen.getByText('+const a = 1;')).toBeTruthy();
+  });
+});
+
+describe('editing in place', () => {
+  // @DecisionRef ui:change-shows-implications — the reach shows while editing.
+  // @DecisionRef ui:walk-the-suspect-set — each suspect is walked before the commit.
+  // @DecisionRef ui:commit-never-gated — the commit lands with suspects still unworked.
+  it('an edit shows its reach, walks the suspects, and commits without working them all', async () => {
+    preview = {
+      suspects: [
+        { place: 'product/demo/parent-rule/online-only', readAt: 'product/demo/parent-rule/online-only', name: 'Online only', reason: '"Parent rule" changed' },
+        { place: 'product/demo/parent-rule/online-only/deep-leaf.yaml', readAt: 'product/demo/parent-rule/online-only/deep-leaf.yaml', name: 'Deep leaf', reason: '"Parent rule" changed' },
+      ],
+      touched: [],
+    };
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit app:parent-rule decision' }));
+    expect(screen.getByText(/Changing this makes 2 nodes that depend on it suspect/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('app:parent-rule decision'), { target: { value: 'Parents rule kindly.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    const walk = await screen.findByLabelText('change walk');
+    expect(within(walk).getByText(/makes 2 nodes suspect/)).toBeTruthy();
+    expect(within(walk).getByText('This corner works online only.')).toBeTruthy();
+    fireEvent.click(within(walk).getByRole('button', { name: /still holds/ }));
+    fireEvent.click(within(walk).getByRole('button', { name: /commit — 1 unworked will be marked dubious/ }));
+    await waitFor(() => expect(landed).toHaveBeenCalledWith(OUTCOME));
+    const commit = calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[]; worked: string[] };
+    expect(commit.operations).toEqual([
+      { op: 'edit-decision', place: 'product/demo/parent-rule', id: 'app:parent-rule', field: 'decision', value: 'Parents rule kindly.', clearDubious: false },
+    ]);
+    expect(commit.worked).toEqual(['product/demo/parent-rule/online-only']);
   });
 
-  // @DecisionRef ui:dubious-is-recorded — the recorded mark visible wherever the record
-  // appears, with its one line of reason, the named record reachable, and a confirm.
-  it('a dubious record carries the label, its reason and a confirm control', () => {
-    const onTravel = vi.fn();
-    render(
-      <RecordOverlay snapshot={snap} id="app:child-rule" onClose={() => {}} onTravel={onTravel} onChanged={() => {}} />,
-    );
-    expect(screen.getAllByText('DUBIOUS').length).toBeGreaterThan(0);
-    expect(screen.getByText(/app:parent-rule was edited/)).toBeTruthy();
-    expect(screen.getByText('confirm coherent')).toBeTruthy();
-    fireEvent.click(screen.getByText('read app:parent-rule'));
-    expect(onTravel).toHaveBeenCalledWith('app:parent-rule');
+  it('a suspect edited in the walk joins the same change', async () => {
+    preview = {
+      suspects: [{ place: 'product/demo/parent-rule/online-only', readAt: 'product/demo/parent-rule/online-only', name: 'Online only', reason: 'r' }],
+      touched: [],
+    };
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit app:parent-rule decision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    const walk = await screen.findByLabelText('change walk');
+    fireEvent.click(within(walk).getByRole('button', { name: 'edit it' }));
+    fireEvent.change(within(walk).getByLabelText('app:online-only text'), { target: { value: 'Online, mostly.' } });
+    fireEvent.click(within(walk).getByRole('button', { name: 'add these edits to the change' }));
+    await waitFor(() => expect(calls.filter((c) => c.url === '/api/change/preview')).toHaveLength(2));
+    fireEvent.click(await within(walk).findByRole('button', { name: /^commit/ }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    const commit = calls.find((c) => c.url === '/api/change')!.body as { operations: { id: string }[]; worked: string[] };
+    expect(commit.operations.map((o) => o.id)).toEqual(['app:parent-rule', 'app:online-only']);
+    expect(commit.worked).toEqual(['product/demo/parent-rule/online-only']);
   });
 
-  // @DecisionRef ui:all-but-id-editable — the edit surface offers every field but the id.
-  it('the edit tab offers decision, rejected, links, context, commitments, dubious — never id', () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:parent-rule" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
-    const select = screen.getByRole('combobox');
-    const options = within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
-    expect(options).toEqual(['decision', 'rejected', 'links', 'context', 'commitments', 'dubious']);
-    expect(screen.getByText(/the id is not editable/)).toBeTruthy();
+  // @DecisionRef ui:single-field-one-act — nothing suspect: the edit commits in one act.
+  it('an edit that makes nothing suspect commits straight away', async () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit questions' }));
+    fireEvent.change(screen.getByLabelText('questions, one per line'), { target: { value: 'Does the demo need accounts?\nWho hosts it?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    const commit = calls.find((c) => c.url === '/api/change')!.body as { operations: { value: string[] }[] };
+    expect(commit.operations[0].value).toEqual(['Does the demo need accounts?', 'Who hosts it?']);
   });
 
-  // @DecisionRef ui:change-shows-implications — dependents at the moment of change.
-  it('editing a decision puts the measured dependents in front of the user', async () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:parent-rule" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
-    expect(await screen.findByText(/implications of changing this decision/)).toBeTruthy();
-    expect(await screen.findByText('app:consumer-rule')).toBeTruthy();
-    expect(screen.getByText(/never gated/)).toBeTruthy();
+  it('editing a dubious node offers to clear its mark, on by default', async () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit questions' }));
+    expect((screen.getByRole('checkbox', { name: /clears its dubious mark/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: { clearDubious: boolean }[] }).operations[0].clearDubious).toBe(true);
   });
 
-  // @DecisionRef ui:edits-cast-suspicion — the walk before the commit: a suspect read
-  // through and ticked is sent as worked, so the commit marks only the unworked rest.
-  it('the suspect walk sends the worked suspects with the commit', async () => {
-    const fetchMock = vi.mocked(fetch);
-    render(
-      <RecordOverlay snapshot={snap} id="app:parent-rule" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
-    await screen.findByText('app:consumer-rule');
-    const row = screen.getByText('app:consumer-rule').closest('label')!;
-    fireEvent.click(within(row).getByRole('checkbox'));
-    expect(screen.getByText(/1 unworked suspect will/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'commit' }));
-    await vi.waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u) === '/api/change');
-      expect(call).toBeTruthy();
-      const body = JSON.parse(String(call![1]?.body));
-      expect(body.worked).toEqual(['app:consumer-rule']);
-    });
+  // @DecisionRef ui:dubious-clears-on-work — confirming is one commit removing the mark.
+  it('confirms a dubious node in one step', async () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
+    fireEvent.click(screen.getByRole('button', { name: /read it through and it holds/ }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
+      { op: 'confirm', place: 'product/demo/parent-rule/online-only' },
+    ]);
   });
 
-  // @DecisionRef ui:edits-cast-suspicion — a move's suspects are the moved subtree.
-  it('the move tab walks the moved subtree', async () => {
-    render(
-      <RecordOverlay snapshot={snap} id="app:severed-zone" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'move' }));
-    expect(await screen.findByText('app:deep-leaf')).toBeTruthy();
-    expect(screen.getByText(/2 unworked suspects will/)).toBeTruthy();
+  // @DecisionRef ui:dubious-set-by-hand — the person states what they saw.
+  it('marks a node dubious by hand with the reason given', async () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    fireEvent.click(screen.getByRole('button', { name: 'mark dubious…' }));
+    fireEvent.change(screen.getByPlaceholderText('one line: the contradiction'), { target: { value: 'contradicts the story' } });
+    fireEvent.click(screen.getByRole('button', { name: 'mark dubious' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
+      { op: 'mark-dubious', place: 'product/demo/parent-rule', reason: 'contradicts the story' },
+    ]);
   });
 
-  // @DecisionRef ui:dubious-is-recorded — a person sets the mark by hand through the one
-  // editing control, stating what they saw.
-  it('marking a record dubious by hand sends one line through edit-field', async () => {
-    const fetchMock = vi.mocked(fetch);
-    render(
-      <RecordOverlay snapshot={snap} id="app:deep-leaf" onClose={() => {}} onTravel={() => {}} onChanged={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dubious' } });
-    fireEvent.change(screen.getByLabelText('dubious value'), {
-      target: { value: 'reads against the severed zone' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'commit' }));
-    await vi.waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u) === '/api/change');
-      expect(call).toBeTruthy();
-      const body = JSON.parse(String(call![1]?.body));
-      expect(body.operations[0]).toEqual({
-        op: 'edit-field',
-        id: 'app:deep-leaf',
-        field: 'dubious',
-        value: 'reads against the severed zone',
-      });
+  it('a refusal explains itself, and the user returns to the edit', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: false, refusal: 'the check would fail: x' }), { status: 422 })));
+    wrap(<DetailsPanel current="product/demo" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit includes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('the check would fail: x');
+    fireEvent.click(screen.getByRole('button', { name: 'back to the edit' }));
+    expect(screen.getByRole('button', { name: 'save' })).toBeTruthy();
+  });
+
+  it('adds a node beneath the current one', async () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    fireEvent.click(screen.getByRole('button', { name: 'add a node beneath' }));
+    const form = screen.getByLabelText('add a node');
+    fireEvent.change(within(form).getByLabelText('name'), { target: { value: 'Grandchild' } });
+    fireEvent.change(within(form).getByLabelText(/first decision's id/), { target: { value: 'app:grandchild' } });
+    fireEvent.change(within(form).getByLabelText('the decision, one clause'), { target: { value: 'A grandchild rule.' } });
+    fireEvent.click(within(form).getByRole('button', { name: /create beneath Parent rule/ }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: { op: string; parent: string }[] }).operations[0]).toMatchObject({
+      op: 'create-node',
+      parent: 'product/demo/parent-rule',
     });
   });
 });
 
-describe('EngineeringView', () => {
-  // @DecisionRef ui:engineering-reads-at-a-glance — the whole commons surveyable, each
-  // rule and what refines it legible without excavation.
-  it('shows every engineering rule and its children with the rule text visible', () => {
-    render(<EngineeringView snapshot={snap} onOpen={() => {}} />);
-    expect(screen.getByText('Do things the sample way.')).toBeTruthy();
-    expect(screen.getByText('Refine the sample way.')).toBeTruthy();
-    expect(screen.getByText('One rule, one place.')).toBeTruthy();
-    expect(screen.getByText(/ambient/)).toBeTruthy();
-  });
-});
-
-describe('ModelsView', () => {
-  // @DecisionRef ui:current-and-proposed-visible — deployed reality and ruled intent
-  // both visible as the normal view, not behind a compare mode.
-  it('shows deployed and intended side by side for a pending field', () => {
-    render(<ModelsView snapshot={snap} onTravel={() => {}} onChanged={() => {}} />);
-    expect(screen.getByText(/scalar — how big it is/)).toBeTruthy();
-    expect(screen.getByText(/scalar — size in millimeters/)).toBeTruthy();
-    expect(screen.getAllByText('pending-migration').length).toBeGreaterThan(0);
-  });
-
-  it('model field citations travel to the governing ruling', () => {
-    const onTravel = vi.fn();
-    render(<ModelsView snapshot={snap} onTravel={onTravel} onChanged={() => {}} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'app:parent-rule' })[0]);
-    expect(onTravel).toHaveBeenCalledWith('app:parent-rule');
-  });
-
-  // @DecisionRef adr:models-memorialize-deployed-shape — landing is the user's attestation
-  // that the migration shipped, offered beside the migration in flight.
-  it('offers landing a migration in flight through the land-migration operation', async () => {
-    const fetchMock = vi.mocked(fetch);
-    const onChanged = vi.fn();
-    render(<ModelsView snapshot={snap} onTravel={() => {}} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: /land widget-name/ }));
-    await vi.waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u) === '/api/change');
-      expect(call).toBeTruthy();
-      expect(JSON.parse(String(call![1]?.body))).toEqual({
-        operations: [{ op: 'land-migration', name: 'widget-name' }],
-      });
-      expect(onChanged).toHaveBeenCalled();
-    });
-  });
-
-  // @DecisionRef adr:fields-link-their-rulings — a deployed field citing no ruling is
-  // surfaced as a probable orphan.
-  it('marks a field with no governing link as a probable orphan', () => {
-    render(<ModelsView snapshot={snap} onTravel={() => {}} onChanged={() => {}} />);
-    const table = within(screen.getByRole('table'));
-    const row = table.getByText('size').closest('tr')!;
-    expect(within(row).getByText('probable orphan')).toBeTruthy();
-    const governed = table.getByText('name').closest('tr')!;
-    expect(within(governed).queryByText('probable orphan')).toBeNull();
-  });
-
-  // @DecisionRef ui:read-only-code-lens — no per-field usage weight is measured or shown.
-  it('shows no field-usage measurement', () => {
-    render(<ModelsView snapshot={snap} onTravel={() => {}} onChanged={() => {}} />);
-    expect(screen.queryByText(/usage/)).toBeNull();
-  });
-});
-
-describe('SearchPanel', () => {
-  // @DecisionRef ui:search-any-text — hits show match and location; selecting is travel.
-  it('shows hits with field and hierarchy, and selection travels', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            query: 'parent',
-            hits: [
-              {
-                id: 'app:parent-rule',
-                path: 'product/demo/app.parent-rule/self.yaml',
-                field: 'decision',
-                snippet: 'Parents rule broadly.',
-                hierarchy: ['story:demo'],
-                root: 'product',
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
-    const onTravel = vi.fn();
-    render(<SearchPanel snapshot={snap} onTravel={onTravel} />);
-    fireEvent.change(screen.getByPlaceholderText(/search any text/), {
-      target: { value: 'parent' },
-    });
-    const hit = await screen.findByText('Parents rule broadly.');
-    expect(screen.getByText('decision')).toBeTruthy();
-    expect(screen.getByText('story:demo')).toBeTruthy();
+describe('search and findings', () => {
+  // @DecisionRef ui:selecting-a-hit-travels — a hit makes its node current.
+  it('a hit shows what matched and where, and selecting it travels there', async () => {
+    wrap(<Search />);
+    fireEvent.change(screen.getByLabelText('search the ledger'), { target: { value: 'children' } });
+    const hit = await screen.findByRole('option');
+    expect(hit.textContent).toContain('product › Demo');
+    expect(hit.textContent).toContain('letting children rule');
     fireEvent.click(hit);
-    expect(onTravel).toHaveBeenCalled();
-    expect(onTravel.mock.calls[0][0]).toBe('app:parent-rule');
-  });
-});
-
-describe('GapsPanel', () => {
-  // @DecisionRef eng:log-ledger-interactions — the gap list derived from the log, with
-  // skipped malformed lines reported rather than failing.
-  it('lists the logged gaps with their ids travelable and reports skipped lines', () => {
-    const onTravel = vi.fn();
-    render(<GapsPanel snapshot={snap} onTravel={onTravel} onClose={() => {}} />);
-    expect(screen.getByText(/decision gaps — 1/)).toBeTruthy();
-    expect(screen.getByText(/1 malformed line/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'app:deep-leaf' }));
-    expect(onTravel).toHaveBeenCalledWith('app:deep-leaf');
-  });
-});
-
-describe('SuspectsPanel', () => {
-  // @DecisionRef ui:edits-cast-suspicion — the walk through the suspect set: read,
-  // confirm or edit each one.
-  it('lists every dubious record with its reason and a confirm control', () => {
-    render(
-      <SuspectsPanel snapshot={snap} onOpen={() => {}} onTravel={() => {}} onChanged={() => {}} onClose={() => {}} />,
-    );
-    expect(screen.getByText(/dubious records — 1/)).toBeTruthy();
-    expect(screen.getByText('app:child-rule')).toBeTruthy();
-    expect(screen.getByText(/app:parent-rule was edited/)).toBeTruthy();
-    expect(screen.getByText('confirm coherent')).toBeTruthy();
+    expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
   });
 
-  // @DecisionRef ui:dubious-is-recorded — confirming removes the field and commits that
-  // removal through the one write path.
-  it('confirming sends the removal of the dubious field', async () => {
-    const fetchMock = vi.mocked(fetch);
-    render(
-      <SuspectsPanel snapshot={snap} onOpen={() => {}} onTravel={() => {}} onChanged={() => {}} onClose={() => {}} />,
-    );
-    fireEvent.click(screen.getByText('confirm coherent'));
-    await vi.waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u) === '/api/change');
-      expect(call).toBeTruthy();
-      expect(JSON.parse(String(call![1]?.body)).operations).toEqual([
-        { op: 'edit-field', id: 'app:child-rule', field: 'dubious', value: null },
-      ]);
-    });
+  // @DecisionRef ui:findings-list-travels — the list takes the user to each finding's place.
+  it('the findings list travels to a finding\'s place', () => {
+    const onClose = vi.fn();
+    wrap(<FindingsList onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Parent rule/ }));
+    expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
+    expect(onClose).toHaveBeenCalled();
   });
 });

@@ -1,220 +1,137 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LedgerSnapshot } from '@adroit/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeOutcome, LedgerView } from '@adroit/shared';
 import { api } from './api.js';
-import type { StarMap } from './map/StarMap.js';
-import { CapabilitiesView } from './components/CapabilitiesView.jsx';
-import { EngineeringView } from './components/EngineeringView.jsx';
-import { MapView } from './components/MapView.jsx';
-import { ModelsView } from './components/ModelsView.jsx';
-import { RecordOverlay } from './components/RecordOverlay.jsx';
-import { GapsPanel } from './components/GapsPanel.jsx';
-import { SearchPanel } from './components/SearchPanel.jsx';
-import { SuspectsPanel } from './components/SuspectsPanel.jsx';
+import { LedgerContext, type Ledger } from './context.js';
+import { DetailsPanel } from './components/DetailsPanel.jsx';
+import { FindingsList } from './components/Findings.jsx';
+import { NavPanel } from './components/NavPanel.jsx';
+import { OpenLedger } from './components/OpenLedger.jsx';
+import { Search } from './components/Search.jsx';
 
-type View =
-  | { kind: 'tree'; tree: string }
-  | { kind: 'engineering' }
-  | { kind: 'models' }
-  | { kind: 'capabilities' };
+/** Every place above one, so the navigation panel shows it. */
+function chainOf(view: LedgerView, place: string): string[] {
+  const out: string[] = [];
+  for (let p: string | null = view.places[place]?.parent ?? null; p !== null; p = view.places[p]?.parent ?? null) out.push(p);
+  return out;
+}
 
+/** The first node to show: the first product tree's root, else the first root. */
+const firstPlace = (view: LedgerView): string =>
+  view.places.product?.children[0] ?? view.roots.find((r) => view.places[r]?.children.length) ?? view.roots[0] ?? '';
+
+/**
+ * The navigation panel on the left, the details panel on the right, and the ledger-wide tools
+ * (open, search, findings) above them.
+ * @DecisionRef ui:organized-around-hierarchy — the hierarchy is the frame everything sits in.
+ * @DecisionRef story:ui — understand and manipulate a ledger.
+ */
 export function App() {
-  const [snapshot, setSnapshot] = useState<LedgerSnapshot | null>(null);
-  const [view, setView] = useState<View | null>(null);
-  const [overlayId, setOverlayId] = useState<string | null>(null);
-  const [highlight, setHighlight] = useState<string | null>(null);
-  const [suspectsOpen, setSuspectsOpen] = useState(false);
-  const [gapsOpen, setGapsOpen] = useState(false);
-  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
+  const [view, setView] = useState<LedgerView | null>(null);
+  const [current, setCurrent] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [findingsOpen, setFindingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const mapRef = useRef<StarMap | null>(null);
+  const [version, setVersion] = useState(0);
+  const currentRef = useRef('');
 
-  const reload = useCallback(async () => {
-    try {
-      const snap = await api.ledger();
-      setSnapshot(snap);
-      setLoadError(null);
-      setView((v) => v ?? (snap.productTrees[0] ? { kind: 'tree', tree: snap.productTrees[0].name } : { kind: 'engineering' }));
-    } catch {
-      setLoadError('the local server is not reachable — is it running against a ledger?');
-    }
+  const go = useCallback((v: LedgerView, place: string) => {
+    currentRef.current = place;
+    setCurrent(place);
+    setExpanded((e) => new Set([...e, ...chainOf(v, place), place]));
   }, []);
+
+  const show = useCallback(
+    (v: LedgerView, place?: string) => {
+      setView(v);
+      const cur = currentRef.current;
+      go(v, place && v.places[place] ? place : v.places[cur] && cur ? cur : firstPlace(v));
+      setVersion((n) => n + 1);
+    },
+    [go],
+  );
+
+  const reload = useCallback(
+    async (place?: string) => {
+      try {
+        show(await api.ledger(), place);
+        setLoadError(null);
+      } catch {
+        setLoadError('the local server is not reachable — is it running?');
+      }
+    },
+    [show],
+  );
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // @DecisionRef eng:own-action-visible — after any mutation the whole snapshot is
-  // refetched, so every surface reflects what the user just did without a reload.
-  const onChanged = useCallback(
-    (message: string) => {
-      setNotice(message);
-      void reload();
-      window.setTimeout(() => setNotice(null), 6000);
+  /** @DecisionRef ui:selecting-a-hit-travels — travel makes a place current in both panels. */
+  const travel = useCallback(
+    (place: string) => {
+      if (view?.places[place]) go(view, place);
+    },
+    [view, go],
+  );
+
+  // @DecisionRef eng:own-action-visible — after a change lands the whole view is refetched, so
+  // every surface shows it without a reload.
+  // @DecisionRef eng:outcome-honesty — the notice says what the commit did, marks included.
+  const landed = useCallback(
+    (outcome: ChangeOutcome) => {
+      setNotice(
+        `committed ${outcome.commit.slice(0, 8)}` +
+          (outcome.marked.length ? ` — marked ${outcome.marked.length} unworked suspect${outcome.marked.length === 1 ? '' : 's'} dubious` : ''),
+      );
+      void reload(outcome.landedAt);
+      window.setTimeout(() => setNotice(null), 8000);
     },
     [reload],
   );
 
-  /**
-   * Travel: within the current product tree it is continuous flight; into another root
-   * or tree it is a clean cut landed on the target's native treatment
-   * (@DecisionRef ui:explore-as-star-map, @DecisionRef ui:cross-root-is-a-cut).
-   */
-  const travel = useCallback(
-    (id: string) => {
-      if (!snapshot) return;
-      const rec = snapshot.records[id];
-      if (rec) {
-        if (rec.root === 'product' && rec.treeName) {
-          const sameTree = view?.kind === 'tree' && view.tree === rec.treeName;
-          if (!sameTree) setView({ kind: 'tree', tree: rec.treeName });
-          // flight within the tree; after a cut the landing itself is the arrival —
-          // the map consumes the focus after its data is set, so the flight never races
-          setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
-          setOverlayId(null);
-          return;
-        }
-        if (rec.root === 'engineering') {
-          setView({ kind: 'engineering' });
-        } else {
-          setView({ kind: 'capabilities' });
-        }
-        setHighlight(id);
-        setOverlayId(id);
-        return;
-      }
-      if (snapshot.models.some((m) => m.id === id)) {
-        setView({ kind: 'models' });
-        setHighlight(id);
-        return;
-      }
-      if (snapshot.capabilities.some((c) => c.name === id)) {
-        setView({ kind: 'capabilities' });
-        setHighlight(id);
-        return;
-      }
-    },
-    [snapshot, view],
-  );
+  const ctx = useMemo<Ledger | null>(() => (view ? { view, travel, landed } : null), [view, travel, landed]);
 
   if (loadError) return <div className="load-error">{loadError}</div>;
-  if (!snapshot || !view) return <div className="load-error muted">reading the ledger…</div>;
+  if (!view || !ctx) return <div className="load-error muted">reading the ledger…</div>;
 
-  const suspectCount = Object.values(snapshot.records).filter((r) => r.doc.dubious !== undefined).length;
-  const treeRoot =
-    view.kind === 'tree'
-      ? snapshot.productTrees.find((t) => t.name === view.tree)?.rootId
-      : undefined;
-
+  const errors = view.findings.filter((f) => f.severity === 'error').length;
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">
-          adroit <span className="muted">· {snapshot.corpus}</span>
-        </span>
-        <nav className="root-tabs">
-          {/* Each root gets its native treatment; switching is a clean cut
-              (ui:roots-get-native-treatments, ui:cross-root-is-a-cut). */}
-          {snapshot.productTrees.map((t) => (
-            <button
-              key={t.name}
-              className={view.kind === 'tree' && view.tree === t.name ? 'active' : ''}
-              onClick={() => setView({ kind: 'tree', tree: t.name })}
-            >
-              {t.name}
-            </button>
-          ))}
-          <button
-            className={view.kind === 'engineering' ? 'active' : ''}
-            onClick={() => setView({ kind: 'engineering' })}
-          >
-            engineering
+    <LedgerContext.Provider value={ctx}>
+      <div className="app">
+        <header className="topbar">
+          <span className="brand">adroit</span>
+          <span className="muted">{view.corpus}</span>
+          <OpenLedger dir={view.dir} onOpened={(v) => show(v, firstPlace(v))} />
+          <span className="spacer" />
+          <Search />
+          <button className={`findings-button ${errors ? 'has-errors' : ''}`} onClick={() => setFindingsOpen(!findingsOpen)}>
+            findings: {view.findings.length}
           </button>
-          <button
-            className={view.kind === 'models' ? 'active' : ''}
-            onClick={() => setView({ kind: 'models' })}
-          >
-            models
-          </button>
-          <button
-            className={view.kind === 'capabilities' ? 'active' : ''}
-            onClick={() => setView({ kind: 'capabilities' })}
-          >
-            capabilities
-          </button>
-        </nav>
-        <SearchPanel snapshot={snapshot} onTravel={(id) => travel(id)} />
-        <button
-          className={`suspects-button ${suspectCount > 0 ? 'has-suspects' : ''}`}
-          onClick={() => setSuspectsOpen(!suspectsOpen)}
-        >
-          dubious: {suspectCount}
-        </button>
-        <button className="suspects-button" onClick={() => setGapsOpen(!gapsOpen)}>
-          gaps: {snapshot.gaps.length}
-        </button>
-      </header>
-
-      {notice && <div className="notice">{notice}</div>}
-      {snapshot.incoherences.length > 0 && (
-        <div className="incoherence-bar">
-          {snapshot.incoherences.length} commitment incoherence(s):{' '}
-          {snapshot.incoherences.map((i) => (
-            <button key={`${i.recordId}|${i.commitmentId}|${i.kind}`} className="link" onClick={() => travel(i.recordId)}>
-              {i.note}
-            </button>
-          ))}
-        </div>
-      )}
-      {snapshot.workingDiff.length > 0 && (
-        <div className="working-diff muted">
-          in-flight working diff: {snapshot.workingDiff.length} file(s) uncommitted
-        </div>
-      )}
-
-      <main className="main-area">
-        {view.kind === 'tree' && treeRoot && (
-          <MapView
-            snapshot={snapshot}
-            rootId={treeRoot}
-            focus={focus}
-            onOpen={(id) => setOverlayId(id)}
-            onSelect={() => undefined}
-            mapRef={mapRef}
+        </header>
+        {notice && (
+          <div className="notice" role="status">
+            {notice}
+          </div>
+        )}
+        {!view.repo && <div className="notice muted">This ledger is not inside a git repository: it can be read, and changes cannot land.</div>}
+        {findingsOpen && <FindingsList onClose={() => setFindingsOpen(false)} />}
+        <main className="panels">
+          <NavPanel
+            current={current}
+            expanded={expanded}
+            onToggle={(p) =>
+              setExpanded((e) => {
+                const next = new Set(e);
+                if (next.has(p)) next.delete(p);
+                else next.add(p);
+                return next;
+              })
+            }
           />
-        )}
-        {view.kind === 'engineering' && (
-          <EngineeringView snapshot={snapshot} onOpen={setOverlayId} highlight={highlight} />
-        )}
-        {view.kind === 'models' && (
-          <ModelsView snapshot={snapshot} onTravel={travel} onChanged={onChanged} highlight={highlight} />
-        )}
-        {view.kind === 'capabilities' && (
-          <CapabilitiesView snapshot={snapshot} onTravel={travel} onOpen={setOverlayId} />
-        )}
-
-        {overlayId && snapshot.records[overlayId] && (
-          <RecordOverlay
-            snapshot={snapshot}
-            id={overlayId}
-            onClose={() => setOverlayId(null)}
-            onTravel={travel}
-            onChanged={onChanged}
-          />
-        )}
-        {suspectsOpen && (
-          <SuspectsPanel
-            snapshot={snapshot}
-            onOpen={setOverlayId}
-            onTravel={travel}
-            onChanged={onChanged}
-            onClose={() => setSuspectsOpen(false)}
-          />
-        )}
-        {gapsOpen && (
-          <GapsPanel snapshot={snapshot} onTravel={travel} onClose={() => setGapsOpen(false)} />
-        )}
-      </main>
-    </div>
+          <DetailsPanel key={`${current}#${version}`} current={current} />
+        </main>
+      </div>
+    </LedgerContext.Provider>
   );
 }

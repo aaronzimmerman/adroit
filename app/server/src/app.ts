@@ -1,29 +1,25 @@
-// The thin local server: it owns every ledger read and write, the git operations and the
-// code lens; the browser is a pure view (@DecisionRef eng:thin-server-owns-files).
+// The thin local server: it owns every ledger read and write, the git operations and the code
+// lens (@DecisionRef eng:thin-server-owns-files).
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import { applyChange, Refusal } from './change.js';
-import { dependentsOf, fieldsCiting, subtreeIds } from './derive.js';
-import { GitFacts } from './gitfacts.js';
-import { parseLedger } from './ledger.js';
+import { applyChange, previewChange, Refusal } from './change.js';
+import { GitFacts, repoOf } from './gitfacts.js';
+import { openLedger } from './ledger.js';
 import { citationsFor } from './lens.js';
 import { searchLedger } from './search.js';
-import { buildSnapshot, type SnapshotOptions } from './snapshot.js';
+import { buildView } from './snapshot.js';
 
 interface AppOptions {
-  repoRoot: string;
-  ledgerDirName?: string;
-  /** Repo-relative directories the code lens reads. */
-  codeDirs?: string[];
+  /** The ledger directory opened at start. */
+  ledgerDir: string;
   webDist?: string;
-  snapshot?: SnapshotOptions;
 }
 
 export function createApp(opts: AppOptions): Express {
-  const repoRoot = opts.repoRoot;
-  const ledgerDirName = opts.ledgerDirName ?? 'ledger';
-  const codeDirs = opts.codeDirs ?? ['app'];
+  // @DecisionRef ui:open-any-ledger — the opened ledger is whichever directory the user points
+  // the tool at, not only the one this repository holds.
+  let ledgerDir = path.resolve(opts.ledgerDir);
   const app = express();
   app.use(express.json({ limit: '4mb' }));
 
@@ -32,65 +28,47 @@ export function createApp(opts: AppOptions): Express {
     (req: Request, res: Response, next: NextFunction) => {
       Promise.resolve(fn(req, res)).catch(next);
     };
+  const view = async () => {
+    const repo = await repoOf(ledgerDir);
+    return buildView(openLedger(ledgerDir), repo ? new GitFacts(repo) : null);
+  };
 
-  app.get(
-    '/api/ledger',
-    wrap(async (_req, res) => {
-      res.json(await buildSnapshot(repoRoot, ledgerDirName, opts.snapshot ?? {}));
-    }),
-  );
+  app.get('/api/ledger', wrap(async (_req, res) => {
+    res.json(await view());
+  }));
 
-  app.get(
-    '/api/search',
-    wrap((req, res) => {
-      const q = String(req.query.q ?? '');
-      const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-      res.json({ query: q, hits: searchLedger(ledger, q) });
-    }),
-  );
+  app.post('/api/open', wrap(async (req, res) => {
+    const asked = typeof req.body?.dir === 'string' ? req.body.dir.trim() : '';
+    if (!asked) throw new Refusal('give the path of a ledger directory');
+    const dir = path.resolve(asked.replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Refusal(`${dir} is not a directory`);
+    ledgerDir = dir;
+    res.json(await view());
+  }));
 
-  // @DecisionRef ui:change-shows-implications — the dependents of a change, measured
-  // from the graph, served so the UI can put them in front of the user at the moment
-  // of change.
-  app.get(
-    '/api/impact',
-    wrap((req, res) => {
-      const id = String(req.query.id ?? '');
-      const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-      if (!ledger.records.has(id)) throw new Refusal(`record "${id}" does not exist`);
-      const descendants = subtreeIds(ledger, id).filter((x) => x !== id);
-      const dependents = dependentsOf(ledger, id);
-      const consumers = dependents.filter((d) => !descendants.includes(d));
-      // A move's suspects are the moved subtree itself (ui:edits-cast-suspicion).
-      const moved = subtreeIds(ledger, id);
-      // The model fields citing this ruling: its migration surface (adr:fields-link-their-rulings).
-      const modelFields = fieldsCiting(ledger, id);
-      res.json({ id, descendants, consumers, dependents, moved, modelFields });
-    }),
-  );
+  app.get('/api/search', wrap(async (req, res) => {
+    const q = String(req.query.q ?? '');
+    res.json({ query: q, hits: searchLedger(await view(), q) });
+  }));
 
-  app.post(
-    '/api/change',
-    wrap(async (req, res) => {
-      const outcome = await applyChange(repoRoot, ledgerDirName, req.body);
-      res.json(outcome);
-    }),
-  );
+  // @DecisionRef ui:change-shows-implications — what a change would make suspect, measured
+  // before anything is written, so the user sees it at the moment of change.
+  app.post('/api/change/preview', wrap((req, res) => {
+    res.json(previewChange(ledgerDir, req.body));
+  }));
 
-  app.get(
-    '/api/lens/citations',
-    wrap(async (req, res) => {
-      const id = String(req.query.id ?? '');
-      const git = new GitFacts(repoRoot);
-      const ledger = parseLedger(path.join(repoRoot, ledgerDirName));
-      const rec = ledger.records.get(id);
-      const decisionChangedAt = rec
-        ? await git.lastDecisionChange(path.posix.join(ledgerDirName, rec.path))
-        : 0;
-      const citations = await citationsFor(repoRoot, codeDirs, id, git, decisionChangedAt);
-      res.json({ id, citations, axis: 'textual @DecisionRef bindings in the built code' });
-    }),
-  );
+  app.post('/api/change', wrap(async (req, res) => {
+    res.json(await applyChange(ledgerDir, await repoOf(ledgerDir), req.body));
+  }));
+
+  app.get('/api/lens', wrap(async (req, res) => {
+    const id = String(req.query.id ?? '');
+    const repo = await repoOf(ledgerDir);
+    if (!repo) throw new Refusal('this ledger is not inside a git repository, so there is no code to read');
+    const rec = openLedger(ledgerDir).store.byId.get(id);
+    const citations = await citationsFor(new GitFacts(repo), ledgerDir, id, rec?._node ?? null);
+    res.json({ id, citations });
+  }));
 
   if (opts.webDist && fs.existsSync(opts.webDist)) {
     app.use(express.static(opts.webDist));
@@ -99,8 +77,8 @@ export function createApp(opts: AppOptions): Express {
     });
   }
 
-  // @DecisionRef eng:refusal-explains-itself — a user-caused refusal states what was
-  // wrong in the user's terms; anything else stays a generic line with no internals.
+  // @DecisionRef eng:refusal-explains-itself — a user-caused refusal states what was wrong in
+  // the user's terms; anything else stays a generic line with no internals.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof Refusal) {
       res.status(422).json({ ok: false, refusal: err.message });

@@ -1,165 +1,88 @@
-// @DecisionRef ui:search-any-text — finding is a match on any text in the whole ledger
-// directory: decision text, rejected alternatives, context, model field names and pending
-// entries, contract text, and ids themselves, which match like any other text. There is
-// no privileged id lookup.
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { SearchHit } from '@adroit/shared';
-import { ancestorsOf } from './derive.js';
-import type { ParsedLedger } from './ledger.js';
+// @DecisionRef ui:search-any-text — finding is a match on any text in the ledger directory:
+// names, decisions, rejected alternatives, includes, notes, context, model fields and pending
+// entries, pending changes, the domain registry, and the text of a file the parser refused.
+// @DecisionRef ui:no-privileged-id-lookup — an id is one more piece of text; a pasted id finds
+// its decision because its text matches, through the same match as every other field.
+import type { LedgerView, Place, SearchHit } from '@adroit/shared';
 
-// Named once (eng:window-named-once): result and snippet bounds for one search.
+// @DecisionRef eng:window-named-once — named once here: result and snippet bounds for one search.
 const SEARCH_MAX_HITS = 200;
 const SNIPPET_RADIUS = 70;
 
-function snippetAround(text: string, index: number, matchLen: number): string {
+function snippetAround(text: string, index: number, length: number): string {
   const start = Math.max(0, index - SNIPPET_RADIUS);
-  const end = Math.min(text.length, index + matchLen + SNIPPET_RADIUS);
-  const clean = (s: string) => s.replace(/\s+/g, ' ');
-  return (
-    (start > 0 ? '…' : '') + clean(text.slice(start, end)).trim() + (end < text.length ? '…' : '')
-  );
+  const end = Math.min(text.length, index + length + SNIPPET_RADIUS);
+  return (start > 0 ? '…' : '') + text.slice(start, end).replace(/\s+/g, ' ').trim() + (end < text.length ? '…' : '');
 }
 
-interface Searchable {
-  id?: string;
-  path: string;
-  field: string;
-  text: string;
-  hierarchy: string[];
-  root: SearchHit['root'];
+/** Every string inside a free-form value, each keyed by where it sits. */
+function flatten(prefix: string, v: unknown, out: [string, string][]): void {
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out.push([prefix, String(v)]);
+  else if (Array.isArray(v)) v.forEach((x, i) => flatten(`${prefix}[${i + 1}]`, x, out));
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) flatten(`${prefix}.${k}`, x, out);
 }
 
-function* recordSearchables(ledger: ParsedLedger): Generator<Searchable> {
-  for (const rec of ledger.records.values()) {
-    const hierarchy = ancestorsOf(ledger, rec.id)
-      .map((a) => a.id)
-      .reverse();
-    const base = { id: rec.id, path: rec.path, hierarchy, root: rec.root };
-    yield { ...base, field: 'id', text: rec.id };
-    yield { ...base, field: 'decision', text: rec.doc.decision };
-    for (let i = 0; i < rec.doc.rejected.length; i++) {
-      yield { ...base, field: `rejected[${i + 1}]`, text: String(rec.doc.rejected[i]) };
+/** The text of one place, field by field. */
+function fieldsOf(place: Place, view: LedgerView): [string, string][] {
+  const out: [string, string][] = [];
+  if (place.node) {
+    const d = place.node.doc;
+    out.push(['name', d.name]);
+    for (const x of d.decisions) {
+      out.push([`${x.id} · id`, x.id], [`${x.id} · decision`, x.decision]);
+      (x.rejected ?? []).forEach((r, i) => out.push([`${x.id} · rejected ${i + 1}`, r]));
     }
-    for (const [k, v] of Object.entries(rec.doc.links ?? {})) {
-      yield { ...base, field: `links.${k}`, text: Array.isArray(v) ? v.join(' ') : String(v) };
-    }
-    for (const [k, v] of Object.entries(rec.doc.context ?? {})) {
-      yield { ...base, field: `context.${k}`, text: String(v) };
-    }
-    if (rec.doc.dubious !== undefined) yield { ...base, field: 'dubious', text: rec.doc.dubious };
-    for (const c of rec.doc.commitments ?? []) {
-      yield {
-        ...base,
-        field: `commitments.${c.id}`,
-        text: [c.id, c.description, c.adherence].filter(Boolean).join(' '),
-      };
+    if (d.includes?.length) out.push(['includes', d.includes.join(', ')]);
+    if (d.severed?.length) out.push(['severed', d.severed.join(', ')]);
+    if (d.dubious) out.push(['dubious', d.dubious]);
+    (d.questions ?? []).forEach((q, i) => out.push([`question ${i + 1}`, q]));
+    flatten('context', d.context, out);
+  }
+  if (place.model) {
+    out.push(['id', place.model.id], ['decision', place.model.decision]);
+    for (const f of place.model.fields) {
+      out.push([`field ${f.name}`, f.name]);
+      if (f.deployed) out.push([`field ${f.name} · deployed`, f.deployed]);
+      if (f.intended) out.push([`field ${f.name} · intended`, f.intended]);
     }
   }
+  if (place.change) flatten('pending change', place.change, out);
+  if (place.raw !== undefined) place.raw.split('\n').forEach((line, i) => out.push([`line ${i + 1}`, line]));
+  if (place.path === 'domains.yaml') {
+    out.push(['corpus', view.corpus]);
+    for (const [k, v] of Object.entries(view.domains)) out.push([`domain ${k}`, `${k}: ${v}`]);
+  }
+  return out;
 }
 
-function* otherSearchables(ledger: ParsedLedger): Generator<Searchable> {
-  for (const model of ledger.models) {
-    const base = { id: model.id, path: model.path, hierarchy: ['models'], root: 'models' as const };
-    yield { ...base, field: 'id', text: model.id };
-    yield { ...base, field: 'summary', text: model.doc.summary };
-    for (const [name, text] of Object.entries(model.doc.fields)) {
-      yield { ...base, field: `fields.${name}`, text: `${name} — ${text}` };
-    }
-    for (const p of model.doc.pending ?? []) {
-      yield {
-        ...base,
-        field: `pending.${p.field}`,
-        text: `${p.field} ${p.op} ${p.intended ?? ''} ${p.current ?? ''}`,
-      };
-    }
+/** The labels of the places above one, root first: where a hit lives in the hierarchy. */
+function trailOf(view: LedgerView, at: string): string[] {
+  const trail: string[] = [];
+  for (let p = view.places[at]?.parent ?? null; p; p = view.places[p]?.parent ?? null) {
+    trail.unshift(view.places[p].label);
   }
-  for (const change of ledger.changes) {
-    const base = {
-      id: `change:${change.doc.name}`,
-      path: change.path,
-      hierarchy: ['models', 'pending-changes'],
-      root: 'models' as const,
-    };
-    yield { ...base, field: 'name', text: change.doc.name };
-    for (const op of change.doc.operations ?? []) {
-      yield { ...base, field: `operations.${op.field}`, text: `${op.current ?? ''} ${op.intended ?? ''}` };
-    }
-  }
-  for (const cap of ledger.capabilities) {
-    const base = {
-      id: cap.name,
-      path: cap.contractPath,
-      hierarchy: ['capabilities'],
-      root: 'capabilities' as const,
-    };
-    for (const [k, v] of Object.entries(cap.contract)) {
-      if (typeof v === 'string') yield { ...base, field: k, text: v };
-      else if (typeof v === 'object' && v !== null) {
-        for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-          yield { ...base, field: `${k}.${k2}`, text: String(v2) };
-        }
-      }
-    }
-  }
-  for (const [domain, scope] of Object.entries(ledger.domains)) {
-    yield {
-      path: 'domains.yaml',
-      field: domain,
-      text: `${domain}: ${scope}`,
-      hierarchy: [],
-      root: 'ledger',
-    };
-  }
+  return trail;
 }
 
-/** Raw-text fallback for ledger files that are not structured records (.md notes etc.). */
-function* rawFileSearchables(ledger: ParsedLedger): Generator<Searchable> {
-  const walk = function* (relDir: string): Generator<string> {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(path.join(ledger.ledgerDir, relDir), { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const rel = path.posix.join(relDir, e.name);
-      if (e.isDirectory()) yield* walk(rel);
-      else if (!e.name.endsWith('.yaml')) yield rel;
-    }
-  };
-  for (const rel of walk('')) {
-    let text = '';
-    try {
-      text = fs.readFileSync(path.join(ledger.ledgerDir, rel), 'utf8');
-    } catch {
-      continue;
-    }
-    if (text.includes('\0')) continue; // not text
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      yield { path: rel, field: `line ${i + 1}`, text: lines[i], hierarchy: [], root: 'ledger' };
-    }
-  }
-}
-
-export function searchLedger(ledger: ParsedLedger, query: string): SearchHit[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
+/**
+ * A place matches when every word of the query appears somewhere in its text; each of its
+ * fields holding a word is one hit, so the reader sees what matched.
+ * @DecisionRef ui:hit-shows-its-place — every hit carries its field, its snippet and its trail.
+ */
+export function searchLedger(view: LedgerView, query: string): SearchHit[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
   const hits: SearchHit[] = [];
-  const sources = [recordSearchables(ledger), otherSearchables(ledger), rawFileSearchables(ledger)];
-  for (const source of sources) {
-    for (const s of source) {
-      const idx = s.text.toLowerCase().indexOf(q);
-      if (idx === -1) continue;
-      hits.push({
-        ...(s.id !== undefined ? { id: s.id } : {}),
-        path: s.path,
-        field: s.field,
-        snippet: snippetAround(s.text, idx, q.length),
-        hierarchy: s.hierarchy,
-        root: s.root,
-      });
+  for (const place of Object.values(view.places)) {
+    const fields = fieldsOf(place, view);
+    const all = fields.map(([, t]) => t.toLowerCase()).join('\n');
+    if (!terms.every((t) => all.includes(t))) continue;
+    const trail = trailOf(view, place.path);
+    for (const [field, text] of fields) {
+      const lower = text.toLowerCase();
+      const term = terms.find((t) => lower.includes(t));
+      if (!term) continue;
+      hits.push({ place: place.path, field, snippet: snippetAround(text, lower.indexOf(term), term.length), trail });
       if (hits.length >= SEARCH_MAX_HITS) return hits;
     }
   }

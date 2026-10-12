@@ -1,37 +1,25 @@
-// @DecisionRef ui:read-only-code-lens — a read-only lens into the code: the UI never
-// edits code, it only consumes facts about it. Everything here reads; nothing writes.
-// @DecisionRef eng:code-cites-its-decisions — attribution derives from @DecisionRef
-// bindings in the code plus git facts, never from anyone's narrative of what they did.
+// @DecisionRef ui:read-only-code-lens — a read-only lens into the code: everything here reads,
+// nothing writes.
+// @DecisionRef eng:lens-reads-bindings — what changed because a decision changed is derived from
+// the code's @DecisionRef bindings and the cited files' diffs, never from anyone's narrative.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CodeCitation } from '@adroit/shared';
 import type { GitFacts } from './gitfacts.js';
 import { UNCOMMITTED } from './clock.js';
 
-// Named once (eng:window-named-once): which files the lens reads and how much context a
-// snippet carries.
-const LENS_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html'];
-const LENS_SKIP_DIRS = ['node_modules', 'dist', '.git'];
+// @DecisionRef eng:window-named-once — named once here: which files the lens reads, how much
+// context a snippet carries, and how long a diff it returns.
+const LENS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.java', '.css', '.html', '.sql'];
+const LENS_SKIP_DIRS = ['node_modules', 'dist', 'dist-types', 'build', 'target', 'coverage', '.git'];
 const SNIPPET_CONTEXT_LINES = 3;
+const DIFF_MAX_CHARS = 6000;
 
-const REF_RE = /@DecisionRef\s+([a-z][a-z-]*:[a-z][a-z-]*)/g;
-const GAP_RE = /@DecisionGap\s+(.+)/g;
+const REF_RE = /@DecisionRef\s+([a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*)/g;
 
-export interface RawCitation {
-  id: string;
-  file: string;
-  line: number;
-  snippet: string;
-}
-
-export interface CodeGap {
-  file: string;
-  line: number;
-  note: string;
-}
-
-function* walkCode(repoRoot: string, dirs: string[]): Generator<string> {
-  const stack = [...dirs];
+/** Every code file under the repository, the ledger itself left out. */
+function* walkCode(repoRoot: string, skip: string): Generator<string> {
+  const stack = [''];
   while (stack.length > 0) {
     const rel = stack.pop()!;
     let entries: fs.Dirent[];
@@ -41,68 +29,59 @@ function* walkCode(repoRoot: string, dirs: string[]): Generator<string> {
       continue;
     }
     for (const e of entries) {
+      const child = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
-        if (!LENS_SKIP_DIRS.includes(e.name)) stack.push(path.posix.join(rel, e.name));
+        if (!LENS_SKIP_DIRS.includes(e.name) && child !== skip) stack.push(child);
       } else if (LENS_EXTENSIONS.includes(path.extname(e.name))) {
-        yield path.posix.join(rel, e.name);
+        yield child;
       }
     }
   }
-}
-
-export function scanCitations(
-  repoRoot: string,
-  codeDirs: string[],
-): { citations: RawCitation[]; gaps: CodeGap[] } {
-  const citations: RawCitation[] = [];
-  const gaps: CodeGap[] = [];
-  for (const file of walkCode(repoRoot, codeDirs)) {
-    let text: string;
-    try {
-      text = fs.readFileSync(path.join(repoRoot, file), 'utf8');
-    } catch {
-      continue;
-    }
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      for (const m of lines[i].matchAll(REF_RE)) {
-        const from = Math.max(0, i - SNIPPET_CONTEXT_LINES);
-        const to = Math.min(lines.length, i + SNIPPET_CONTEXT_LINES + 1);
-        citations.push({
-          id: m[1],
-          file,
-          line: i + 1,
-          snippet: lines.slice(from, to).join('\n'),
-        });
-      }
-      for (const m of lines[i].matchAll(GAP_RE)) {
-        gaps.push({ file, line: i + 1, note: m[1].trim() });
-      }
-    }
-  }
-  return { citations, gaps };
 }
 
 /**
- * Citations of one decision, with "did this code change since the rule changed" read
- * from git — what changed in the codebase because the decision changed.
+ * Every place the code cites one decision, each with its snippet in context and, read from git,
+ * whether — and how — the file moved since the decision's text last changed.
+ * @DecisionRef ui:lens-shows-snippets — the citing line arrives with the code around it.
  */
 export async function citationsFor(
-  repoRoot: string,
-  codeDirs: string[],
-  id: string,
   git: GitFacts,
-  decisionChangedAt: number,
+  ledgerDir: string,
+  id: string,
+  decisionFile: string | null,
 ): Promise<CodeCitation[]> {
-  const { citations } = scanCitations(repoRoot, codeDirs);
+  const root = fs.realpathSync(git.repoRoot);
+  const skip = path.relative(root, fs.realpathSync(ledgerDir));
+  const moment = decisionFile
+    ? await git.lastDecisionChange(path.relative(root, path.join(fs.realpathSync(ledgerDir), decisionFile)), id)
+    : { epoch: 0, hash: null };
   const out: CodeCitation[] = [];
-  for (const c of citations.filter((c) => c.id === id)) {
-    const last = await git.lastContentTouch(c.file);
-    out.push({
-      ...c,
-      fileLastChanged: last === UNCOMMITTED ? 0 : last,
-      changedSinceDecision: last >= decisionChangedAt && decisionChangedAt > 0,
-    });
+  for (const file of walkCode(root, skip)) {
+    let text: string;
+    try {
+      text = fs.readFileSync(path.join(root, file), 'utf8');
+    } catch {
+      continue;
+    }
+    if (!text.includes(id)) continue;
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (![...lines[i].matchAll(REF_RE)].some((m) => m[1] === id)) continue;
+      const last = await git.lastContentTouch(file);
+      const changed = moment.epoch > 0 && moment.epoch !== UNCOMMITTED && last >= moment.epoch;
+      const diff = changed && moment.hash ? (await git.diffSince(moment.hash, file)).slice(0, DIFF_MAX_CHARS) : '';
+      out.push({
+        id,
+        file,
+        line: i + 1,
+        snippet: lines
+          .slice(Math.max(0, i - SNIPPET_CONTEXT_LINES), Math.min(lines.length, i + SNIPPET_CONTEXT_LINES + 1))
+          .join('\n'),
+        fileLastChanged: last === UNCOMMITTED ? 0 : last,
+        changedSinceDecision: changed,
+        diff,
+      });
+    }
   }
   return out;
 }

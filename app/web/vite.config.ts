@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+// @DecisionRef eng:react-with-vite — the view builds with Vite and its React plugin.
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
