@@ -1,0 +1,14 @@
+name: React with vite
+decisions:
+  - id: eng:react-with-vite
+    decision: The UI is built in React, and the project builds with Vite.
+    rejected:
+      - >-
+        Svelte or another capable framework — nothing wrong with them; they lost on one criterion:
+        the builder here is a coding agent, and the boring pair is the one agents know cold
+      - >-
+        no framework at all — panels, forms and search results are cheap in a framework and
+        expensive without one
+context:
+  why: baseline blessed on recommendation, chosen for builder-agent familiarity over taste
+  src: ui engineering session 2026-10-08

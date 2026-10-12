@@ -1,14 +1,13 @@
-// adroit — the three WALKED views: HIERARCHY, CAPABILITIES, MODELS.
-//
-// The galaxy shows the whole corpus at once; these three are for walking it. They are a separate
-// script from the shell on purpose: the galaxy's simulation, camera and hash routing are a world of
-// their own, and folding three more views into it would have meant one file nobody can hold.
+// adroit — the explorer's three views: HIERARCHY, CAPABILITIES, MODELS.
 //
 // The contract with the shell is two calls wide — `AdroitViews.activate(mode, host)` when a mode
 // is chosen, and `AdroitViews.has(mode)` to ask which modes exist. Everything else in here is
-// local. Every fact rendered is SERVED (`/api/tree`, `/api/capability`, `/api/erd`,
-// `/api/decision`, `/api/search`): no rule about the store is re-derived in the browser, which is
-// the defect eng:namespace-names-kind exists to prevent.
+// local. Every fact rendered is SERVED (`/api/tree`, `/api/capability`, `/api/erd`, `/api/node`,
+// `/api/search`): no rule about the store is re-derived in the browser.
+//
+// The explorer is a MAINTENANCE surface, so a node shows whole: its name, every decision (with
+// rejected and severable), includes, severed, and the notes the agent dump leaves out — dubious,
+// questions, context.
 (() => {
   'use strict';
 
@@ -24,12 +23,12 @@
     mode: null,
     host: null,
     tree: null,            // /api/tree
-    node: new Map(),       // key -> node (records by id, folders by their path key)
+    node: new Map(),       // key -> tree row (nodes by path, models by id, folders by tree)
     parent: new Map(),     // key -> parent key
-    open: new Set(),       // which folders/records are expanded
-    sel: null,             // the record in the detail panel
+    open: new Set(),       // which folders/nodes are expanded
+    sel: null,             // the node (or model) in the detail panel
     q: '',                 // the tree filter, kept across mode switches with its result
-    match: null,           // ids matching the tree search, or null for "no search"
+    match: null,           // node keys matching the tree search, or null for "no search"
     cap: null,             // the capability overlay's pick
     caps: null,            // /api/capability (the list)
     capSel: null,
@@ -57,7 +56,7 @@
   function frame(host) {
     host.innerHTML = `<div class="vwrap">
       <div class="vmain" id="v-main"></div>
-      <aside class="vdetail" id="v-detail"><div class="empty">Select a record to read it.</div></aside>
+      <aside class="vdetail" id="v-detail"><div class="empty">Select a node to read it.</div></aside>
     </div>`;
   }
 
@@ -71,44 +70,42 @@
   }
 
   // ------------------------------------------------------- the detail panel
-  // ONE panel for all three views: a record reads the same however you reached it.
-  async function select(id) {
-    S.sel = id;
+  // ONE panel for all three views: a node reads the same however you reached it.
+  const textOf = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+  async function select(key) {
+    S.sel = key;
     paintSelection();
     const box = $('#v-detail');
     if (!box) return;
-    const d = await get(`/api/decision?id=${encodeURIComponent(id)}`);
-    if (S.sel !== id) return;                       // a later click won the race
+    const d = await get(`/api/node?key=${encodeURIComponent(key)}`);
+    if (S.sel !== key) return;                      // a later click won the race
     if (d.error) { box.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    const r = d.record, c = r.context || {}, l = r.links || {};
     const list = (xs) => (xs || []).map((x) => `<li>${esc(x)}</li>`).join('');
-    const link = (e) => `<button class="lnk" data-vrec="${esc(e.id)}">
-      <span class="ty">${esc(e.type)}</span><span class="id">${esc(e.id)}</span>
-      <span class="st">${esc(e.decision ?? (e.missing ? 'missing' : ''))}</span></button>`;
-    const kids = (S.node.get(id)?.children ?? []);
     const chips = (xs, lbl) => (xs && xs.length
       ? `<h3>${lbl}</h3><div class="strip" style="padding:0">${xs.map((x) => `<span class="chip">${esc(x)}</span>`).join('')}</div>` : '');
+    const nav = (xs, lbl) => (xs && xs.length ? `<h3>${lbl}</h3>${xs.map((x) =>
+      `<button class="lnk" data-vrec="${esc(x.key)}"><span class="id">${esc(x.name)}</span></button>`).join('')}` : '');
+    const decision = (x) => `<div class="dec">
+        <div class="dtop"><span class="did">${esc(x.id)}</span>${x.severable ? '<span class="vcount">severable</span>' : ''}</div>
+        <div class="stmt">${esc(x.decision)}</div>
+        ${(x.rejected || []).length ? `<h3>Rejected</h3><ul>${list(x.rejected)}</ul>` : ''}
+        ${(x.interactions || []).length ? `<h3>Interactions</h3><ul>${list(x.interactions.map((e) => `${e.kind}: ${e.note}`))}</ul>` : ''}
+      </div>`;
 
     box.innerHTML = `
-      <div class="dtop">
-        <span class="did">${esc(r.id)}</span>
-        <span class="vcount">${esc(r.kind)}</span>
-      </div>
-      <h2>${esc(r.gist || r.id)}</h2>
-      <div class="crumb">${esc(r._rel || r._tree || '')}</div>
-      <div class="stmt">${esc(r.decision)}</div>
-      ${(r.rejected || []).length ? `<h3>Rejected</h3><ul>${list(r.rejected)}</ul>` : ''}
-      ${d.outbound.length ? `<h3>References</h3>${d.outbound.map(link).join('')}` : ''}
-      ${d.inbound.length ? `<h3>Referenced by (${d.inbound.length})</h3>${d.inbound.map(link).join('')}` : ''}
-      ${kids.length ? `<h3>Refined by, in the tree (${kids.length})</h3>${kids.map((k) =>
-        `<button class="lnk" data-vrec="${esc(k.id)}"><span class="id">${esc(k.id)}</span>
-         <span class="st">${esc(k.gist)}</span></button>`).join('')}` : ''}
-      ${chips(c.tables, 'Tables')}
-      ${chips(c.provenance, 'Provenance')}
-      ${c.why ? `<h3>Why</h3><div class="why">${esc(c.why)}</div>` : ''}
-      ${c.src ? `<h3>Source</h3><div class="why">${esc(c.src)}</div>` : ''}
-      ${(d.interactions || []).length ? `<h3>Interactions</h3><ul>${
-        list(d.interactions.map((e) => `${e.kind}: ${e.note}`))}</ul>` : ''}`;
+      <h2>${esc(d.name || d.key)}</h2>
+      <div class="crumb">${esc(d.file || d.key)}</div>
+      ${d.dubious !== undefined && d.dubious !== null ? `<div class="flag"><b>Dubious</b> ${esc(d.dubious)}</div>` : ''}
+      ${(d.decisions || []).map(decision).join('')}
+      ${chips(d.includes, 'Includes')}
+      ${chips(d.severed, 'Severed')}
+      ${chips((d.inScope || []).filter((c) => !(d.includes || []).includes(c)), 'Capabilities in scope from above')}
+      ${chips((d.severedHere || []).filter((c) => !(d.severed || []).includes(c)), 'Severed from above')}
+      ${chips(d.tables, 'Tables')}
+      ${(d.questions || []).length ? `<h3>Open questions</h3><ul>${list(d.questions)}</ul>` : ''}
+      ${d.context !== undefined && d.context !== null ? `<h3>Context</h3><pre class="why">${esc(textOf(d.context))}</pre>` : ''}
+      ${nav(d.ancestors, 'Ancestors')}
+      ${nav(d.children, `Children (${(d.children || []).length})`)}`;
     box.scrollTop = 0;
   }
 
@@ -150,7 +147,7 @@
     S.node.clear();
     S.parent.clear();
     const walk = (n, parentKey) => {
-      const key = n.kind === 'record' ? n.id : n.key;
+      const key = n.key;
       n._key = key;
       S.node.set(key, n);
       if (parentKey) S.parent.set(key, parentKey);
@@ -159,12 +156,12 @@
     for (const r of S.tree.roots) walk(r, null);
   }
 
-  /** Every capability leveraged anywhere, with how many records leverage it — counted from the
-   *  nodes the server already decorated, so the chip row cannot disagree with the badges. */
+  /** Every capability, with how many nodes include it — counted from the rows the server sent,
+   *  so the chip row cannot disagree with the badges. */
   function capCounts() {
     const tally = new Map(S.tree.capabilities.map((c) => [c, 0]));
     for (const n of S.node.values()) {
-      for (const c of n.capabilities || []) tally.set(c, (tally.get(c) ?? 0) + 1);
+      for (const c of n.includes || []) tally.set(c, (tally.get(c) ?? 0) + 1);
     }
     return tally;
   }
@@ -172,7 +169,7 @@
   function paintChips() {
     if (!$('#h-caps')) return;
     const tally = capCounts();
-    $('#h-caps').innerHTML = `<span class="lbl">Leverages</span>` + [...tally]
+    $('#h-caps').innerHTML = `<span class="lbl">Included by</span>` + [...tally]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([name, n]) => `<button class="chip${S.cap === name ? ' on' : ''}" data-vcap="${esc(name)}">
         ${esc(name)}<span class="n">${n}</span></button>`).join('');
@@ -185,12 +182,12 @@
     // The filter is the STORE's search, asked over HTTP — a second matching rule in the browser
     // would be a second definition of what "matches" means.
     const res = await get(`/api/search?q=${encodeURIComponent(q)}`);
-    S.match = new Set((res.decisions || []).map((d) => d.id));
+    S.match = new Set((res.nodes || []).map((n) => n.key));
     revealAll(S.match);
     paintTree();
   }
 
-  /** Open every folder between the roots and these records, so a filter or an overlay shows what
+  /** Open every folder between the roots and these nodes, so a filter or an overlay shows what
    *  it found rather than a closed tree with a count on it. */
   function revealAll(ids) {
     for (const id of ids) {
@@ -207,7 +204,7 @@
     const keep = new Set();
     if (filtering) {
       const mark = (n) => {
-        const hit = n.kind === 'record' && S.match.has(n.id);
+        const hit = S.match.has(n._key);
         const under = (n.children || []).map(mark).some(Boolean);
         if (hit || under) keep.add(n._key);
         return hit || under;
@@ -224,31 +221,36 @@
     for (const r of S.tree.roots) walk(r, 0);
     $('#h-tree').innerHTML = `<div class="tree">${rows.join('')}</div>`;
     $('#h-count').textContent = filtering
-      ? `${S.match.size} of ${S.tree.records} match`
-      : `${S.tree.records} records`;
+      ? `${S.match.size} of ${S.tree.nodes} nodes match`
+      : `${S.tree.nodes} nodes`;
     paintSelection();
   }
 
+  const isLeaf = (n) => n.kind === 'node' || n.kind === 'model';
   function row(n, depth) {
     const kids = (n.children || []).length;
     const open = S.open.has(n._key);
     const caret = kids ? (open ? '▾' : '▸') : '·';
-    const dim = S.cap && n.kind === 'record' && !(n.capabilities || []).includes(S.cap);
+    const dim = S.cap && isLeaf(n) && !(n.includes || []).includes(S.cap);
     const cls = [
       'trow', n.kind === 'root' ? 'root' : '', n.kind === 'group' ? 'group' : '',
-      dim ? 'dim' : '', S.match && n.kind === 'record' && S.match.has(n.id) ? 'hit' : '',
+      dim ? 'dim' : '', S.match && S.match.has(n._key) ? 'hit' : '',
     ].filter(Boolean).join(' ');
-    const badges = (n.capabilities || [])
-      .map((c) => `<span class="capb${S.cap === c ? ' on' : ''}">${esc(c)}</span>`).join('');
-    const label = n.kind === 'record' ? n.id : n.label;
-    return `<button class="${cls}" data-vnode="${esc(n._key)}"${n.kind === 'record' ? ` data-vrec="${esc(n.id)}"` : ''}
+    const badges = (n.includes || [])
+      .map((c) => `<span class="capb${S.cap === c ? ' on' : ''}" title="includes">${esc(c)}</span>`).join('')
+      + ((n.severed || []).length ? `<span class="mark" title="severs ${esc(n.severed.join(', '))}">✂${n.severed.length}</span>` : '')
+      + (n.dubious ? '<span class="mark warn" title="dubious">?</span>' : '')
+      + (n.questions ? `<span class="mark" title="open questions">Q${n.questions}</span>` : '');
+    const label = isLeaf(n) ? n.name : n.label;
+    return `<button class="${cls}" data-vnode="${esc(n._key)}"${isLeaf(n) ? ` data-vrec="${esc(n._key)}"` : ''}
       style="padding-left:${8 + depth * 15}px">
       <span class="tcaret">${caret}</span>
       ${n.accent ? `<span class="dot" style="background:${esc(n.accent)}"></span>` : ''}
       <span class="tid">${esc(label)}</span>
-      <span class="tgist">${esc(n.kind === 'record' ? n.gist : (n.purpose || ''))}</span>
+      ${isLeaf(n) && (n.ids || []).length > 1 ? `<span class="tn">${n.ids.length} decisions</span>` : ''}
+      <span class="tgist">${esc(isLeaf(n) ? n.gist : (n.purpose || ''))}</span>
       ${badges}
-      <span class="tn">${kids || n.kind !== 'record' ? n.count : ''}</span>
+      <span class="tn">${kids || !isLeaf(n) ? n.count : ''}</span>
     </button>`;
   }
 
@@ -313,7 +315,7 @@
     $('#c-list').innerHTML = S.caps.map((c) => `<button class="clrow${c.name === S.capSel ? ' sel' : ''}"
       data-vcapsel="${esc(c.name)}">
       <span class="nm">${esc(c.name)}</span>
-      <span class="sub">${c.records} record${c.records === 1 ? '' : 's'} · ${c.consumerCount} consumer${c.consumerCount === 1 ? '' : 's'}</span>
+      <span class="sub">${c.nodes} node${c.nodes === 1 ? '' : 's'} · included by ${c.includerCount}</span>
     </button>`).join('');
   }
 
@@ -323,13 +325,7 @@
     paintCapList();
     if (!S.capOne.has(name)) S.capOne.set(name, await get(`/api/capability?name=${encodeURIComponent(name)}`));
     const c = S.capOne.get(name);
-    const k = c.contract || {};
-    const items = (xs, none) => ((xs || []).length
-      ? `<ul>${xs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
-      : `<div class="none">${none}</div>`);
-    const models = (k.models || []).length
-      ? `<ul>${k.models.map((m) => `<li><button class="lnk" data-vrec="${esc(m)}" style="padding:0"><span class="id">${esc(m)}</span></button></li>`).join('')}</ul>`
-      : '<div class="none">no model of its own</div>';
+    const root = c.root;
 
     // The capability's own tree, walked with the same rows the hierarchy uses.
     const treeNode = S.node.get(c.tree);
@@ -348,31 +344,29 @@
         : '<span class="none">none</span>'}</div>`;
 
     $('#c-body').innerHTML = `
-      <div class="contract">
+      <div class="caproot">
         <div class="ctop">
-          <h2>${esc(c.name)}</h2>
-          <div class="purpose">${esc(k.purpose || 'This capability publishes no contract.')}</div>
+          <div class="cap">${esc(c.name)}</div>
+          ${root ? `<button class="rootname" data-vrec="${esc(root.key)}">${esc(root.name)}</button>` : ''}
         </div>
-        <div class="cgrid">
-          <section><h3>Inputs</h3>${items(k.inputs, 'nothing declared')}</section>
-          <section><h3>Outputs</h3>${items(k.outputs, 'nothing declared')}</section>
-          <section><h3>Models</h3>${models}</section>
-          <section><h3>Uses</h3>${items((k.uses || []), 'no other capability')}</section>
-        </div>
+        <div class="rootdecs">${root
+          ? root.decisions.map((x) => `<div class="rootdec">
+              <span class="id">${esc(x.id)}</span>
+              <div class="txt">${esc(x.decision || '')}</div></div>`).join('')
+          : `<div class="none">no root node — capabilities/${esc(c.name)}/self.yaml</div>`}</div>
         ${strip('Depends on', c.uses)}
         ${strip('Depended on by', c.usedBy)}
       </div>
       <div class="vsec">
-        <h3>Its decisions (${c.records})</h3>
-        <div class="tree">${rows.join('') || '<div class="none">no record yet</div>'}</div>
-        <h3>Consumers — who leverages it (${c.consumerCount})</h3>
-        ${c.consumersByTree.length ? c.consumersByTree.map((g) => `
+        <h3>Its nodes (${c.nodes} · ${c.decisions} decisions)</h3>
+        <div class="tree">${rows.join('') || '<div class="none">no node yet</div>'}</div>
+        <h3>Included by (${c.includerCount})</h3>
+        ${c.includersByTree.length ? c.includersByTree.map((g) => `
           <div class="ctree">${esc(g.cloud)} <span class="vcount">${esc(g.tree)}</span></div>
-          ${g.records.map((r) => `<button class="consumer" data-vrec="${esc(r.id)}">
-            <span class="ty">${esc(r.type)}</span> <span class="via">${esc(r.id)}</span>
-            <span class="vcount">→ ${esc(r.target)}</span>
-            <span class="st">${esc(r.statement)}</span></button>`).join('')}
-        `).join('') : '<div class="none">nothing outside this capability reaches into it</div>'}
+          ${g.nodes.map((r) => `<button class="consumer" data-vrec="${esc(r.key)}">
+            <span class="via">${esc(r.name)}</span>
+            <span class="st">${esc(r.gist)}</span></button>`).join('')}
+        `).join('') : '<div class="none">no node outside this capability includes it</div>'}
       </div>`;
     $('#c-body').scrollTop = 0;
     paintSelection();
@@ -393,7 +387,7 @@
         <button class="vbtn" id="e-relayout">Re-lay out</button>
         <span class="vcount">${s.present
           ? `schema: ${s.tables} tables, ${s.columns} columns from ${s.migrations} migrations (V${s.highWater})`
-          : 'no schema.json — run node tools/adroit/schema-dump.mjs'}</span>
+          : 'no database schema — models describe their fields in the ledger'}</span>
         ${s.unclaimed?.length ? `<span class="vcount" title="${esc(s.unclaimed.join(', '))}">${s.unclaimed.length} table(s) no model claims</span>` : ''}
       </div>
       <div class="erd" id="e-stage"><div class="plane" id="e-plane"><svg id="e-lines"></svg></div></div>
@@ -422,7 +416,7 @@
       style="left:${p.x}px;top:${p.y}px">
       <div class="eh"><span class="en">${esc(e.name)}</span><span class="ek">${esc(e.kind)}</span></div>
       <div class="eb">${body}</div>
-      ${e.consumers.length ? `<div class="efoot">read by: ${e.consumers.map((c) => esc(c)).join(' · ')}</div>` : ''}
+      ${e.consumers.length ? `<div class="efoot">realizes decisions of: ${e.consumers.map((c) => esc(c)).join(' · ')}</div>` : ''}
     </div>`;
   }
 
@@ -598,7 +592,7 @@
     if (cap) {
       S.cap = S.cap === cap.dataset.vcap ? null : cap.dataset.vcap;
       if (S.cap) {
-        revealAll([...S.node.values()].filter((n) => (n.capabilities || []).includes(S.cap)).map((n) => n._key));
+        revealAll([...S.node.values()].filter((n) => (n.includes || []).includes(S.cap)).map((n) => n._key));
       }
       paintChips();
       return paintTree();
@@ -612,8 +606,8 @@
     const node = e.target.closest('[data-vnode]');
     const rec = e.target.closest('[data-vrec]');
     if (node) {
-      // A folder toggles; a record both selects and toggles, because in this tree a record IS the
-      // folder its refinements live in.
+      // A folder toggles; a node both selects and toggles, because in this tree a node IS the
+      // folder its children live in.
       const key = node.dataset.vnode;
       if ((S.node.get(key)?.children || []).length) toggle(key);
       walkKeys.cur = key;

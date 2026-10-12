@@ -1,0 +1,20 @@
+name: Removed hidden but reachable
+decisions:
+  - id: eng:removed-hidden-but-reachable
+    decision: >-
+      Soft-removed and archived records are hidden from working views by default, and every surface
+      that hides them offers a way to reach them — a toggle, an archive view, a filter. Both halves
+      bind: showing them inline by default clutters the working view with non-candidates, and hiding
+      them with no door turns removal into effective deletion. Views hide, reachably.
+    rejected:
+      - >-
+        removed records inline with marks as the default — the working list is for the work; history
+        is context you ask for
+      - >-
+        hiding with no access door — restorability is only real if the
+        record can be found where it would be restored
+context:
+  why: >-
+    the working view is for live candidates, yet removal without a door to the removed becomes
+    deletion in practice
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:removed-hidden-but-reachable)

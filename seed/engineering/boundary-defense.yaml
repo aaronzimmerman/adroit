@@ -1,0 +1,12 @@
+name: Boundary defense
+decisions:
+  - id: principle:boundary-defense
+    decision: >-
+      Validate and normalize at the boundary — system boundaries validate, normalize, rate-limit,
+      and stay enumeration-safe; storage is never trusted to be clean.
+context:
+  why: >-
+    the system edge is where defense is enforceable — per-caller rate limits, enumeration-safe
+    responses, explicit allowlists, normalization at every write boundary — because storage is never
+    trusted clean
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:boundary-defense)

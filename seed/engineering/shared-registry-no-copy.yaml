@@ -1,0 +1,11 @@
+name: Shared registry no copy
+decisions:
+  - id: eng:shared-registry-no-copy
+    decision: >-
+      A registry rendered by more than one frontend app lives in shared frontend code and every app
+      imports it; the app that owned it first keeps no copy.
+context:
+  why: >-
+    a second app needing the registry otherwise grows a second copy or a backend-rendered
+    substitute, and either breaks the one-registry rule by letting the definitions diverge
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:shared-registry-no-copy)

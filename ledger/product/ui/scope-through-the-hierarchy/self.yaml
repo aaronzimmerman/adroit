@@ -1,0 +1,30 @@
+name: Scope through the hierarchy
+decisions:
+  - id: ui:organized-around-hierarchy
+    decision: >-
+      The UI is organized around the hierarchy and its includes.
+    rejected:
+      - >-
+        following links between decisions across the tree — a node's full context is its
+        ancestry and its includes, never a sideways reference
+  - id: ui:trace-dependence
+    decision: >-
+      At any node the user sees every decision binding there: the node's own, every ancestor's, and
+      every decision of each capability the node or an ancestor includes.
+    rejected:
+      - >-
+        showing only the node's own decisions and leaving the user to climb for the rest — what
+        binds a node is its whole scope, and a reader missing an ancestor's decision misreads the
+        node
+  - id: ui:severed-shown-marked
+    decision: A severed decision is still shown in scope, marked severed.
+  - id: ui:up-a-level-down-another
+    decision: From any node the user can go up a level and descend into a different subtree.
+  - id: ui:capability-shows-includers
+    decision: From a capability, the user sees every node that includes it.
+context:
+  why: >-
+    "the ui should focus on the hierarchy - we want to see all the binding decisions in scope at any
+    point and be able to go up a level and descend a different tree instead"; showing includers from
+    a capability was the proposal the user said yes to
+  src: ui product-tree session 2026-10-11 (user-directed), on adopting the node shape

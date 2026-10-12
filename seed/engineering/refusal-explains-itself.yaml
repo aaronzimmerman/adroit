@@ -1,0 +1,22 @@
+name: Refusal explains itself
+decisions:
+  - id: eng:refusal-explains-itself
+    decision: >-
+      A user-caused refusal explains itself: the response states what was wrong in the user's own
+      terms — the field, the limit, the closed window — and the surface shows the server's stated
+      reason, falling back to a generic line only when the server gave none. The explanation never
+      leaks implementation or security context: no internals, no stack detail, and where explaining
+      would reveal what a boundary hides (a permission denial answers not-found), the boundary wins.
+    rejected:
+      - >-
+        one generic failure line for every refusal — a user sees "could not be sent" while the
+        server's 4xx named the exact problem, and the reason is recoverable only from server logs
+      - >-
+        full transparency — echoing exceptions, constraint names or resource existence turns error
+        messages into a probe surface; the explanation is of the user's error, not the system's
+        anatomy
+context:
+  why: >-
+    a client that swallows the server's stated reason behind a generic line strands the user with no
+    recoverable path, even when the server told the truth
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:refusal-explains-itself)

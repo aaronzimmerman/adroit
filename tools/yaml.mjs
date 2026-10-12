@@ -1,5 +1,5 @@
-// adroit — the YAML subset the four-roots projection writes, and the parser that reads it back
-// (inbox 009). Zero dependencies, ESM, Node built-ins only.
+// adroit — the YAML subset the ledger is written in, and the parser that reads it back.
+// Zero dependencies, ESM, Node built-ins only.
 //
 // Deliberately a SUBSET: exactly the shapes `emit` produces, and nothing else. A ledger file is
 // law, so an unfamiliar construct must be a loud error with a line number rather than a value
@@ -74,7 +74,11 @@ function writeValue(out, ind, prefix, value) {
     const flow = flowSeq(value, head.length);
     if (flow !== null) return line(flow);
     if (prefix) out.push(' '.repeat(ind) + prefix);
-    for (const item of value) writeValue(out, ind + (prefix ? INDENT : 0), '-', item);
+    const at = ind + (prefix ? INDENT : 0);
+    for (const item of value) {
+      if (isPlainObject(item) && Object.keys(item).length) writeSeqMap(out, at, item);
+      else writeValue(out, at, '-', item);
+    }
     return;
   }
   if (isPlainObject(value)) {
@@ -85,6 +89,16 @@ function writeValue(out, ind, prefix, value) {
     return;
   }
   throw new Error(`cannot emit ${value === undefined ? 'undefined' : Object.prototype.toString.call(value)}`);
+}
+
+/** A mapping as a sequence item, in the COMPACT form: `- key: value` with the remaining keys
+ *  aligned under the first. Written as an ordinary mapping indented to the key column, then the
+ *  dash swapped into the first line's indentation — so every nested value (a block scalar, a
+ *  list) is indented against the key it belongs to, exactly as the parser will measure it. */
+function writeSeqMap(out, ind, obj) {
+  const start = out.length;
+  for (const k of Object.keys(obj)) writeValue(out, ind + INDENT, `${emitKey(k)}:`, obj[k]);
+  out[start] = `${' '.repeat(ind)}- ${out[start].slice(ind + INDENT)}`;
 }
 
 /** The four string strategies, in order of preference — and the round-trip gate in front of the
@@ -333,8 +347,19 @@ export function parse(text) {
       const content = lines[i].slice(indent);
       if (content !== '-' && !content.startsWith('- ')) fail(i, 'expected a "- " sequence item');
       const n = i;
+      // `- key: value` opens a mapping whose keys sit at the column of that first key. The line is
+      // re-read as if the dash were indentation, which is exactly what it stands for.
+      const after = content === '-' ? '' : content.slice(1);
+      const lead = /^ */.exec(after)[0].length;
+      const body = after.slice(lead);
+      if (body && !/^[|>[{-]/.test(body) && findKey(body, n)) {
+        const col = indent + 1 + lead;
+        lines[i] = ' '.repeat(col) + body;
+        arr.push(parseMap(col));
+        continue;
+      }
       i++;
-      arr.push(parseValue(content === '-' ? '' : content.slice(2).trim(), indent, n));
+      arr.push(parseValue(body, indent, n));
     }
     return arr;
   };

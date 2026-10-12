@@ -1,0 +1,31 @@
+name: Core vs enrichment
+decisions:
+  - id: principle:core-vs-enrichment
+    decision: >-
+      Every datum a tool touches is CORE or ENRICHMENT. Core is what the tool must have to function
+      — the entities themselves, a name to call. Enrichment is nice-to-have the tool uses for UX
+      goodness — an expected value that sorts a list. A tool must work with enrichment absent or
+      WRONG: the record is still findable, and the tool just handles it. Edge cases are covered for
+      core data only; enrichment gets no retroactive-correction levers, no sync rules, no
+      completeness — being wrong is acceptable because nothing load-bearing stands on it. The SAME
+      axis decides preservation: core domain records (the entities considered, outputs produced,
+      access, anything the owner's history is made of) get memorialization, soft-removal and
+      restoration; enrichment, configuration and meta (labels, annotations, expected values) CUT
+      CLEAN with no trail — no one restores a preference, and the memorialize-on-audit principle
+      governs core only. Classify a datum once and every consequence — edge coverage, levers, audit,
+      restoration — reads off the class instead of being ruled per case.
+    rejected:
+      - >-
+        uniform data rigor — treating every field as must-be-correct breeds edit levers, sync rules
+        and edge-case machinery on data the task never needed
+      - >-
+        core-only tools — the enrichment goodness is wanted (sorted lists, badges); it just must
+        never become load-bearing
+      - >-
+        memorializing everything uniformly — soft-remove machinery on configuration and meta breeds
+        restoration edge cases for data nobody would ever restore
+context:
+  why: >-
+    classifying a datum once lets rigor, edge coverage, audit and restoration read off the class
+    instead of being ruled per case
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:core-vs-enrichment)

@@ -1,0 +1,16 @@
+name: Dubious marks
+decisions:
+  - id: ui:dubious-set-by-hand
+    decision: >-
+      A person can mark a node dubious from the UI on observing a contradiction, stating what they
+      saw.
+  - id: ui:dubious-clears-on-work
+    decision: >-
+      A person confirms a dubious node from the UI after reading it through, which removes its mark
+      in a commit.
+context:
+  why: >-
+    "let's make it a field after all. That way a person can also set it manually if a contradiction
+    is observed". The mark's semantics (one line of reason, cascade, every reason kept, clearing
+    never cascades) are the methodology's (ADROIT.md, Dubious)
+  src: build round one gap walk, 2026-10-10 (user-directed); builder gap three

@@ -1,0 +1,20 @@
+name: All but ids editable
+decisions:
+  - id: ui:all-but-id-editable
+    decision: >-
+      Every field of a node is editable from the UI — its name, decisions, includes, severed list,
+      context, dubious mark and questions — except a decision's id.
+    rejected:
+      - >-
+        an editable id — a rename reads like a one-field edit but silently breaks every citation
+        bound to the name, since references bind to ids precisely so paths can move
+      - >-
+        locking the dangerous-looking fields (links, rejected) as well — the guard against a
+        careless edit is the implications shown at the moment of change, not field locks
+  - id: ui:reparent-is-a-move
+    decision: "A node's parent is not a field: re-parenting is a move, never a text edit."
+context:
+  why: >-
+    "The ID is not editable. Everything else is" — ruled on the question of where editability draws
+    its line; matches the edit operation, which likewise excludes ids (ui:changes-land-as-commits)
+  src: ui product-tree session 2026-10-07

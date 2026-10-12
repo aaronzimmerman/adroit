@@ -1,0 +1,11 @@
+name: Trust context
+decisions:
+  - id: principle:trust-context
+    decision: >-
+      Trust-context separation — every field is classified by who may read it (the subject, a shared
+      working context, the author alone); cross-context entities are never serialized raw.
+context:
+  why: >-
+    classifying every field by who may read it makes failures missing fields, not leaks, when one
+    record serves multiple audiences
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:trust-context)

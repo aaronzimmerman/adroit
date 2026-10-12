@@ -1,0 +1,13 @@
+name: Work bounded by view
+decisions:
+  - id: eng:work-bounded-by-view
+    decision: >-
+      Work is bounded by what the user is looking at: no request is issued and no server work
+      performed that has no bearing on the current scope — a kind with nothing to show costs
+      nothing, entitlement-hidden data is never computed, query shapes that multiply per row (N+1)
+      are weeded out when touched, and per-request work must stay bounded as the user base grows.
+context:
+  why: >-
+    surfaces issuing prospective per-kind calls that were denied or returned nothing paid pure cost
+    for work with no bearing on the current scope
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:work-bounded-by-view)

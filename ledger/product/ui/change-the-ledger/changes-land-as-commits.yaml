@@ -1,0 +1,31 @@
+name: Changes land as commits
+decisions:
+  - id: ui:changes-land-as-commits
+    decision: The UI lands each change as one atomic commit across every file it touches.
+    rejected:
+      - >-
+        deleting a node as an operation — supersession is not yet offered, and an operation nothing
+        may legally invoke is a trap
+      - >-
+        keeping these operations as a capability the change branch includes — only this branch uses
+        them, so a capability adds an include and a second place to look with nothing repeating
+  - id: ui:commit-validates-first
+    decision: >-
+      The UI validates a change against the check's rules before committing, and a refused commit
+      writes nothing.
+  - id: ui:single-field-one-act
+    decision: A single-field edit commits in one act.
+  - id: ui:create-a-node
+    decision: A user can create a node in its place in the tree.
+  - id: ui:set-model-field
+    decision: A user can set a model field's intended definition.
+  - id: ui:begin-migration
+    decision: A user can begin a migration from named pending entries.
+  - id: ui:land-migration
+    decision: A user can land a migration, attesting that it has shipped.
+context:
+  why: >-
+    folded from the change-propose capability's contract when capabilities became included subtrees;
+    "yes" to folding it into the branch that alone used it. What a pending entry, a migration and a
+    landing are is the methodology's (ADROIT.md, Models)
+  src: ui product-tree session 2026-10-11 (user-directed), on adopting the node shape

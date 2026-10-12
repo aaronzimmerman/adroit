@@ -1,0 +1,12 @@
+name: Prominence follows dependence
+decisions:
+  - id: eng:prominence-follows-dependence
+    decision: >-
+      The weight a fact carries in the UI follows how much depends on it: a field many parts of the
+      product key on is surfaced prominently where it is edited, while a field nothing consumes may
+      sit in detail. Prominence derives from the fact's connections, never from per-screen taste.
+context:
+  why: >-
+    a field that search, alerts and coverage all key on was buried in a form like any other —
+    importance is a function of consumption, so the UI should read it off the graph
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:prominence-follows-dependence)

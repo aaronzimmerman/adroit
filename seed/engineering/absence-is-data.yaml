@@ -1,0 +1,20 @@
+name: Absence is data
+decisions:
+  - id: principle:absence-is-data
+    decision: >-
+      Absence is data — a stored value records what was observed or what a user specified, and when
+      there was no input, the absence itself is stored and carried through every layer. No write
+      path and no schema default invents a value to satisfy a read-time requirement; when a product
+      decision needs data in a shape the input doesn't have, the read side reconciles them.
+    rejected:
+      - >-
+        fabricating a plausible value so downstream code stays uniform — the invention is
+        indistinguishable from data and gets acted on as fact
+      - >-
+        defaults at the database layer — a column default is a fabrication that happens even when
+        the write path forgot to decide
+context:
+  why: >-
+    an invented value is indistinguishable from an observed one, so the "there was no input here"
+    fact must survive every layer
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:absence-is-data)

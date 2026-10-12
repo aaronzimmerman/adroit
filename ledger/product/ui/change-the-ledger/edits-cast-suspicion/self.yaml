@@ -1,0 +1,34 @@
+name: Edits cast suspicion
+decisions:
+  - id: ui:walk-the-suspect-set
+    decision: >-
+      Before a change commits, the UI walks the user through every node the change makes suspect,
+      reading, confirming or editing each one.
+  - id: ui:commit-never-gated
+    decision: "The UI never gates the commit: an expert can land it over an unworked suspect set."
+    rejected:
+      - >-
+        a hard gate holding the commit until the suspect set is worked — fencing the action for a
+        trusted expert is what inform-don't-fence forbids; the guard is the dubious mark,
+        information that outlives the commit instead of a door in front of it
+      - >-
+        a blocking confirmation on the load-bearing edit itself — fencing the gesture re-litigates
+        it
+  - id: ui:unworked-suspects-marked
+    decision: >-
+      The UI's commit writes the dubious mark onto each suspect left unworked.
+    rejected:
+      - >-
+        pure inline information that evaporates at commit — a revised root silently landing over an
+        unreviewed subtree, with nothing left behind, is exactly the attention failure the ledger
+        exists to catch
+context:
+  why: >-
+    "labeling decisions as dubious for that kind of situation where there is reason to expect this
+    is no longer coherent" — dissolves the probe-two gate-vs-fence contradiction: the commit stays
+    free, the debt stays visible. What makes a node suspect, and the mark's semantics, are the
+    methodology's (ADROIT.md, Dubious); this node holds only what the UI does about them
+  src: ui product-tree session 2026-10-08; regeneration probe rounds one and two
+  revision: >-
+    2026-10-12: the suspicion and mark semantics moved to ADROIT.md when the methodology left the
+    ledger

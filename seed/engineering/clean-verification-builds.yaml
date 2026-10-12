@@ -1,0 +1,11 @@
+name: Clean verification builds
+decisions:
+  - id: eng:clean-verification-builds
+    decision: >-
+      CI and verification builds start clean: every source is compiled every time, and no build
+      artifact already in the output directory is ever trusted.
+context:
+  why: >-
+    de-skinned from a JVM full-compile ruling: a tolerant tool writing stale artifacts into the
+    shared output let a green build run code that does not compile
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:full-compile-always)

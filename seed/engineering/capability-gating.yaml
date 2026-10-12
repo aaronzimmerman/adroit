@@ -1,0 +1,12 @@
+name: Capability gating
+decisions:
+  - id: principle:capability-gating
+    decision: >-
+      Capability + entitlement gating — access checks reference capabilities, never roles;
+      entitlement (billing) is evaluated only after the capability check passes; denials do not
+      reveal whether the resource exists; administrative super-user status grants nothing in-app.
+context:
+  why: >-
+    gating by capability keeps authorization one question answered one way, with billing after
+    authorization and denials that leak no existence
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:capability-gating)

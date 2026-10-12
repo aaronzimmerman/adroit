@@ -1,0 +1,27 @@
+name: Accepted edge risk
+decisions:
+  - id: principle:accepted-edge-risk
+    decision: >-
+      Some edge cases are accepted, not solved. When covering a rare path would add operational or
+      logical complexity to the mainline use (another query on every interaction, another state
+      machine, another synchronization rule), the edge may be ruled ACCEPTED: if the user does
+      something weird, the app may act weird, and the acceptance is recorded as a decision. The
+      acceptance can arrive at ruling time or at BUILD time — implementation that discovers a ruled
+      behavior's enforcement cost comes back for an accepted-risk ruling rather than silently
+      building the nines of completeness.
+    rejected:
+      - >-
+        completeness as a default — plugging every edge makes every mainline interaction more
+        complicated, slower and riskier; the nines are paid by the 99% who never touch the edge
+      - >-
+        silently not handling the edge — unrecorded weirdness reads as a bug and gets "fixed" into
+        complexity later; the acceptance must be a record
+      - >-
+        silently absorbing enforcement cost at build time — the ledger, not the implementation, is
+        where the trade is decided
+context:
+  why: >-
+    de-skinned from its product's sequential-use framing: nines of completeness make every
+    interaction more complicated and risky, so not solving an edge is itself an engineering decision
+    — recorded, never silent
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:accepted-edge-risk)

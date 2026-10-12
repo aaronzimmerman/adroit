@@ -1,0 +1,21 @@
+name: Access matrix is policy
+decisions:
+  - id: eng:access-matrix-is-policy
+    decision: >-
+      Access policy is ONE executable declarative table: plain-text tables with a row per endpoint,
+      a column per kind of caller, and each cell the answer that caller gets. The tables are the
+      readable access policy. One harness stages one world, runs every cell, and fails on any served
+      endpoint that no row or family default declares. Undeclared work sits on a named pending list
+      that only shrinks. Code that breaks a rule is declared as the rule says and listed as a
+      finding that must keep failing until fixed, never recorded as expected behavior.
+    rejected:
+      - recording whatever the code answers — the table then certifies defects instead of policy
+      - >-
+        per-endpoint denial tests beside the table — two places to answer one question, and they
+        drift
+      - accepting either of two denial answers — hides the existence leaks the rule forbids
+context:
+  why: >-
+    de-skinned from CSRF/payment-check specifics: the first run of one executable matrix surfaced
+    live violations that a thousand lines of retired bespoke suites never caught
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:access-matrix-is-policy)

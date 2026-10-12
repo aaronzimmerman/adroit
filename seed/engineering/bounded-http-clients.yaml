@@ -1,0 +1,11 @@
+name: Bounded HTTP clients
+decisions:
+  - id: eng:bounded-http-clients
+    decision: >-
+      Every HTTP client is bounded with connect and request timeouts; bulk paths must not fan out to
+      rate-limited services.
+context:
+  why: >-
+    an unbounded client lets one hung upstream response stall a request forever, and an unattended
+    bulk path fanning out to a rate-limited service risks a ban
+  src: adroit seed v1, distilled from StageDoor's ledger (eng:bounded-http-clients)

@@ -1,0 +1,22 @@
+name: Inform dont fence
+decisions:
+  - id: principle:inform-dont-fence
+    decision: >-
+      Trusted expert users are informed, not fenced: when the user base is professionals, not the
+      general public, tools empower rather than gate — the user is free to duplicate, free to
+      delete, free to recover. Where an action has consequences the user might not see, the tool's
+      job is to SHOW the context (a warning, a derived fact, a restorable state), never to gate the
+      action. Guards are information, not gates.
+    rejected:
+      - >-
+        guard-railing rare mistakes with merge prompts, confirmations and restrictions — machinery
+        that fences the professional to protect against errors the context would have prevented and
+        soft-removal can undo
+      - >-
+        silent freedom with no context — trust without information is abandonment; the warning and
+        the skip-report are the model
+context:
+  why: >-
+    de-skinned from its product's professional-user framing: for a trusted expert audience, showing
+    context and keeping actions reversible beats gating the action
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:trust-users-give-context)

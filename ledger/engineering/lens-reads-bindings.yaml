@@ -1,0 +1,19 @@
+name: Lens reads bindings
+decisions:
+  - id: eng:lens-reads-bindings
+    decision: >-
+      The code lens derives what changed because a decision changed from the cited code and its
+      diff, never from an agent's narrative of what it did.
+    rejected:
+      - >-
+        commit correlation as the attribution ground truth — a ledger commit followed by code
+        commits says when, not what-for, and refactor commits smear it
+      - >-
+        the regenerating agent reporting its own attribution — logs written from the plan have
+        shipped phantom fixes before; the binding survives in the artifact, the narrative does not
+context:
+  why: >-
+    "the code can carry references to the decisions" — probe round one, finding five. That code
+    cites its decisions is the methodology's (ADROIT.md, Citing decisions); this node holds only
+    how the lens uses those citations
+  src: ui product-tree session 2026-10-08; regeneration probe round one

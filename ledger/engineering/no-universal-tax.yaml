@@ -1,0 +1,20 @@
+name: No universal tax
+decisions:
+  - id: principle:no-universal-tax
+    decision: >-
+      A protection that burdens every legitimate user is not bought to improve a marginal case — the
+      99.99% are never taxed for the 0.001%. Protections land on the rare case itself: a targeted
+      gate, moderation after the fact, a consent asked of the person it concerns — never an extra
+      step, challenge, or restriction on everyone's path. When a safeguard is proposed, the first
+      question is who pays for it and how often.
+    rejected:
+      - >-
+        universal friction as diligence — an age gate every signer fills, a captcha every submitter
+        solves, a hardened lookup every team member fights: each rejected because the attacker it
+        inconveniences is rare and routable-around, while the cost lands on every honest user every
+        time
+context:
+  why: >-
+    the attacker a universal safeguard inconveniences is rare and routes around it, while its cost
+    lands on every honest user every time
+  src: adroit seed v1, distilled from StageDoor's ledger (principle:no-universal-tax)

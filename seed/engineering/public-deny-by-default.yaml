@@ -1,0 +1,11 @@
+name: Public deny by default
+decisions:
+  - id: data:public-deny-by-default
+    decision: >-
+      Public serialization is deny-by-default for every model: a field is public only when
+      explicitly marked so, and a build-time check fails on any unmarked publicly reachable field.
+context:
+  why: >-
+    inverting the serialization default makes an unclassified field go missing (a bug report) rather
+    than leak (an incident)
+  src: adroit seed v1, distilled from StageDoor's ledger (data:public-deny-by-default)

@@ -1,0 +1,31 @@
+name: Change the ledger
+decisions:
+  - id: ui:change-the-ledger
+    decision: >-
+      A user can change the ledger: revise a decision, edit a single field in place, and add a node
+      beneath another.
+    rejected:
+      - >-
+        notes on a decision — disposed of 2026-10-07: a prose margin channel beside the record is
+        the shadow-ledger risk the interactions log already rejected, and content worth
+        keeping belongs in the record's own fields
+      - >-
+        surfacing similarity — convergent decisions visualized as common shapes before any
+        connectivity exists — scrapped 2026-10-07 as a nice-to-have, not core; extraction stays a
+        user-initiated act on a pattern the user already sees
+  - id: ui:extract-a-capability
+    decision: >-
+      A user can extract an emergent capability: select the root of the repeated pattern, move it
+      into the capabilities root, and include it at each place it repeated.
+    rejected:
+      - >-
+        reshaping (similarity, extraction) as a tree of its own beside editing — the user ruled
+        extraction is the same use case as editing: a bigger edit, not a different need
+context:
+  why: >-
+    the changing cluster of the use-case walk; superseding a decision is deliberately deferred, not
+    rejected — "maybe a use case but it seems more complicated to include" (user 2026-10-06)
+  src: ui product-tree session 2026-10-06
+  revision: >-
+    2026-10-07: notes dropped, then similarity surfacing scrapped; rewritten whole rather than
+    patched again (eng:rewrite-over-patch)
