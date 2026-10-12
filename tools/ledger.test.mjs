@@ -114,9 +114,7 @@ test('the live store passes its own check, and the summary counts the node forma
 
 // The app's citations are a compliance worklist, not a gate on the ledger (ADROIT.md, The protocol):
 // a ledger change that deletes a cited id reddens this until the code is rebound.
-test('every @DecisionRef in the app resolves against the live store', {
-  todo: 'the app still cites ids the node-shape migration deleted; build pass three rebinds them',
-}, () => {
+test('every @DecisionRef in the app resolves against the live store', () => {
   const { byId } = loadLedger();
   const bindings = decisionRefBindings();
   assert.ok(bindings.size > 20, 'the app binds its code to decisions');
