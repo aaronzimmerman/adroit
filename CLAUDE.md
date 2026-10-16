@@ -13,9 +13,12 @@ This repository holds three things:
 
 - `node tools/dump.mjs --scope <id|path>` — the agent read; `--subtree`, `--referrers`,
   `--maintenance`, `--interactions` as ADROIT.md, The tools describes.
-- `node tools/server.mjs --check` — validate `ledger/`; exit 1 on any error. `--diff [ref]`,
-  `--open`.
-- `node --test tools/ledger.test.mjs` — the tools' own tests.
+- `node tools/server.mjs --check` — validate `ledger/`; exit 1 on any error. `--citations`,
+  `--diff [ref]`, `--open`.
+- `node --test tools/ledger.test.mjs tools/migrate.test.mjs` — the tools' own tests.
+
+These are the only copy of the tools. Adopting projects (StageDoor in `~/workspace/magic-beans`)
+run them from here through `ADROIT_DIR`; a tool change is made here, never in a project.
 
 ## The app
 

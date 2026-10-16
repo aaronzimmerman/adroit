@@ -20,7 +20,7 @@ import { emit } from './yaml.mjs';
 import {
   loadLedger, buildStore, validate, warn, storeCounts, scopedRead, referrersOf, nodeLine, resolveNode,
   interactionIndex, parseInteractionLog, interactionLogPath, openGaps, citedIds, compactTextChange,
-  decisionRefBindings, shapeIndex, viewIndex, declaredDerivations, erdData,
+  decisionRefBindings, decisionRefIds, danglingCitations, shapeIndex, viewIndex, declaredDerivations, erdData,
   treeIndex, nodeDetail, capabilityIndex, capabilityDependencies, capabilityCycles, search,
   resolveUiAsset, entryKind, treeOfPath, cloudOfTree, idsInDecisionText, reachOverclaims, kindOf,
   fieldTokens, effectiveReferences,
@@ -1091,14 +1091,6 @@ test('the ERD draws each view with its typed fields, and the ref and consumes ed
   assert.ok(!erd.edges.some((e) => e.type === 'grounds'), 'a principle is no box, so grounding draws no edge');
 });
 
-test('the committed migration schema dump is still well-formed (the dump tooling stands on its own)', () => {
-  const file = fileURLToPath(new URL('schema.json', import.meta.url));
-  if (!existsSync(file)) return;                // never regenerated here — nothing to check
-  const schema = JSON.parse(readFileSync(file, 'utf8'));
-  assert.ok(schema.tables.auditionNotice?.some((col) => col.name === 'id'), 'the schema really is the product schema');
-  assert.deepEqual(schema.failures, [], 'every migration statement executed');
-});
-
 test('a path names its tree, and a tree names its short name', () => {
   assert.equal(treeOfPath('capabilities/email/declared-mail-only/self.yaml'), 'capabilities/email');
   assert.equal(treeOfPath('product/hq/standalone-tools/self.yaml'), 'product/hq');
@@ -1108,4 +1100,34 @@ test('a path names its tree, and a tree names its short name', () => {
   assert.equal(cloudOfTree('models'), 'models');
   assert.equal(SELF, 'self.yaml');
   assert.ok(existsSync(join(LEDGER, 'engineering')), 'the live store really is laid out this way');
+});
+
+// ---------------------------------------------------------------------------
+// Run from the adopting project
+// ---------------------------------------------------------------------------
+
+test('a citation reads as a comment or an annotation, one id or several', () => {
+  assert.deepEqual(decisionRefIds('// @DecisionRef ui:edit-offers-clearing — the checkbox'), ['ui:edit-offers-clearing']);
+  assert.deepEqual(decisionRefIds('@DecisionRef("aud:colour-amber")'), ['aud:colour-amber']);
+  assert.deepEqual(decisionRefIds('@DecisionRef({"sub:form-stream", "admin:feed-merged"})'), ['sub:form-stream', 'admin:feed-merged']);
+  assert.deepEqual(decisionRefIds('mentions @DecisionRef without an id'), []);
+});
+
+test('--citations exits 1 naming each cited id that resolves to nothing, run from the project itself', () => {
+  onDisk(BASE(), (dir) => {
+    const project = join(dir, '..');
+    mkdirSync(join(project, 'src', 'deep'), { recursive: true });
+    writeFileSync(join(project, 'src', 'a.ts'), '// @DecisionRef story:app — the root\n// @DecisionRef app:gone — stale\n');
+    writeFileSync(join(project, 'src', 'B.java'), '@DecisionRef({"story:app", "app:also-gone"})\n');
+    const run = () => spawnSync(process.execPath, [SERVER, '--citations'], { cwd: join(project, 'src', 'deep'), encoding: 'utf8',
+      env: { ...process.env, ADROIT_LEDGER_DIR: '', ADROIT_PROJECT_DIR: '' } });
+    const r = run();
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /app:gone {2}src\/a\.ts:2/);
+    assert.match(r.stderr, /app:also-gone {2}src\/B\.java:1/);
+    assert.doesNotMatch(r.stderr, /story:app/);
+    writeFileSync(join(project, 'src', 'a.ts'), '// @DecisionRef story:app\n');
+    writeFileSync(join(project, 'src', 'B.java'), '@DecisionRef("story:app")\n');
+    assert.equal(run().status, 0, 'every citation resolves once the stale ones go');
+  });
 });

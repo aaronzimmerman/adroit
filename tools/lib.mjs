@@ -42,7 +42,20 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { parse as parseYaml } from './yaml.mjs';
 
-export const ROOT = path.resolve(import.meta.dirname, '..');
+/** The adroit checkout these tools live in — never the project they read. */
+export const TOOLS_DIR = import.meta.dirname;
+
+/** The project the tools read: ADROIT_PROJECT_DIR, else the nearest directory at or above the
+ *  working directory that holds a `ledger/`, else the working directory. The tools are run from
+ *  the adopting project (`node $ADROIT_DIR/tools/dump.mjs`), never copied into it. */
+function findProjectRoot() {
+  if (process.env.ADROIT_PROJECT_DIR) return path.resolve(process.env.ADROIT_PROJECT_DIR);
+  for (let d = process.cwd(); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, 'ledger'))) return d;
+    if (path.dirname(d) === d) return process.cwd();
+  }
+}
+export const ROOT = findProjectRoot();
 // ADROIT_LEDGER_DIR points the whole tool at another store — the server's `--dir` for everything
 // that does not go through the server (tests, a frozen snapshot, a second checkout).
 export const LEDGER_DIR = process.env.ADROIT_LEDGER_DIR
@@ -763,30 +776,15 @@ export function modelIdsInText(value) {
 
 /** NO IDS IN DECISION TEXT (user-directed 2026-10-10). A decision's text states the rule; its
  *  relationships are structural — the parent is the directory, a capability is an include. So the
- *  `decision` field names no record id. `rejected` and `context` are history and may keep theirs.
- *  A token counts only when it RESOLVES: a live id, or a retired numbered id id-map.json
- *  translates. view: (and retired model:) ids are left to modelIdsInText. Flip the constant to make the findings
- *  warnings instead of errors. */
+ *  `decision` field names no record id. `rejected` and `context` may name ids.
+ *  A token counts only when it RESOLVES to a live id. view: (and retired model:) ids are left to
+ *  modelIdsInText. Flip the constant to make the findings warnings instead of errors. */
 export const IDS_IN_DECISION_TEXT_FAIL = true;
 
-let retiredIdsCache;
-/** The retired numbered ids (`AUD-D14`, `email:D8`) id-map.json still translates. */
-export function retiredIds() {
-  if (!retiredIdsCache) {
-    try {
-      retiredIdsCache = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'id-map.json'), 'utf8'))));
-    } catch {
-      retiredIdsCache = new Set();
-    }
-  }
-  return retiredIdsCache;
-}
-
 const TEXT_ID_TOKEN = /(?<![A-Za-z0-9_:-])[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*/g;
-const RETIRED_ID_TOKEN = /(?<![A-Za-z0-9_:-])(?:[A-Z]+-D\d+|[a-z]+:D\d+)(?![A-Za-z0-9])/g;
 
 /** Every record id named in a decision's text — [{ where, token }]. Views are out of scope. */
-export function idsInDecisionText(rec, byId = new Map(), retired = retiredIds()) {
+export function idsInDecisionText(rec, byId = new Map()) {
   if (!rec?._node || typeof rec.decision !== 'string') return [];
   const out = [], seen = new Set();
   for (const m of rec.decision.matchAll(TEXT_ID_TOKEN)) {
@@ -794,11 +792,6 @@ export function idsInDecisionText(rec, byId = new Map(), retired = retiredIds())
     if (seen.has(token) || !byId.has(token) || isView(token) || retiredKindOf(token)) continue;
     seen.add(token);
     out.push({ where: 'decision', token });
-  }
-  for (const m of rec.decision.matchAll(RETIRED_ID_TOKEN)) {
-    if (seen.has(m[0]) || !retired.has(m[0])) continue;
-    seen.add(m[0]);
-    out.push({ where: 'decision', token: m[0] });
   }
   return out;
 }
@@ -1266,50 +1259,68 @@ export function viewLine(rec, { maintenance = false } = {}) {
 // ---------------------------------------------------------------------------
 
 const SKIP_DIRS = new Set(['node_modules', 'target', 'dist', 'build', '.git', 'coverage']);
-const TEXT_EXT = new Set(['.java', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.md', '.json', '.jsonl',
-  '.sql', '.yml', '.yaml', '.conf', '.css', '.html', '.txt']);
 
-/** Walk the repo's source-ish directories, yielding { file, lineNo, line } per hit. */
-export function scanRepo(needle, dirs = ['app', 'tools', 'ledger', 'seed']) {
-  const hits = [];
-  const walk = (dir) => {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
+const CODE_EXT = new Set(['.java', '.kt', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rb', '.cs', '.swift']);
+const CITED_ID = /[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*/;
+
+/** The ids one line cites: `@DecisionRef <id>` in a comment, or an annotation
+ *  `@DecisionRef("id")` / `@DecisionRef({"a", "b"})`. */
+export function decisionRefIds(line) {
+  const ids = [];
+  for (const m of line.matchAll(/@DecisionRef(?:\s*\(([^)]*)\)|\s+([^\s,;)]+))/g)) {
+    if (m[1] !== undefined) {
+      for (const q of m[1].matchAll(/["']([^"']+)["']/g)) if (CITED_ID.test(q[1])) ids.push(q[1]);
+    } else {
+      const id = m[2].match(new RegExp(`^${CITED_ID.source}`))?.[0];
+      if (id) ids.push(id);
     }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
-        continue;
-      }
-      if (!TEXT_EXT.has(path.extname(entry.name))) continue;
-      const file = path.join(dir, entry.name);
-      const content = fs.readFileSync(file, 'utf8');
-      if (!content.includes(needle)) continue;
-      content.split('\n').forEach((line, i) => {
-        if (line.includes(needle)) hits.push({ file: path.relative(ROOT, file), lineNo: i + 1, line: line.trim() });
-      });
-    }
-  };
-  for (const d of dirs) walk(path.join(ROOT, d));
-  return hits;
+  }
+  return ids;
 }
 
-/** All `@DecisionRef <id>` citations in the app's code and tests, as { id -> [{file, lineNo}] }
+/** The project's tracked code files (git ls-files), less the ledger and these tools' own
+ *  checkout — or every code file under the root when the project is not a git repository. */
+function codeFiles() {
+  let files;
+  try {
+    files = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+      .split('\0').filter(Boolean);
+  } catch {
+    files = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = dir ? `${dir}/${e.name}` : e.name;
+        if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(rel); } else files.push(rel);
+      }
+    };
+    walk('');
+  }
+  const own = path.relative(ROOT, TOOLS_DIR);
+  const inOwn = own && !own.startsWith('..') ? (f) => f === own || f.startsWith(`${own}/`) : () => false;
+  return files.filter((f) => CODE_EXT.has(path.extname(f)) && !f.startsWith('ledger/') && !inOwn(f));
+}
+
+/** Every decision citation in the project's code and tests, as { id -> [{file, lineNo}] }
  *  (ADROIT.md, Citing decisions). */
 export function decisionRefBindings() {
   const bindings = new Map();
-  for (const hit of scanRepo('@DecisionRef', ['app'])) {
-    for (const m of hit.line.matchAll(/@DecisionRef\s+([a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*)/g)) {
-      const id = m[1];
-      if (!bindings.has(id)) bindings.set(id, []);
-      bindings.get(id).push({ file: hit.file, lineNo: hit.lineNo });
-    }
+  for (const file of codeFiles()) {
+    let content;
+    try { content = fs.readFileSync(path.join(ROOT, file), 'utf8'); } catch { continue; }
+    if (!content.includes('@DecisionRef')) continue;
+    content.split('\n').forEach((line, i) => {
+      for (const id of decisionRefIds(line)) {
+        if (!bindings.has(id)) bindings.set(id, []);
+        bindings.get(id).push({ file, lineNo: i + 1 });
+      }
+    });
   }
   return bindings;
 }
+
+/** Citations whose id resolves to no record — [{ id, sites }]. */
+export const danglingCitations = (store, bindings = decisionRefBindings()) =>
+  [...bindings].filter(([id]) => !store.byId.has(id)).map(([id, sites]) => ({ id, sites }));
 
 // ---------------------------------------------------------------------------
 // Search

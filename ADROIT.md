@@ -379,8 +379,7 @@ The protocol is the rule; this is how it is done well.
 1. Create `ledger/` with only the roots you need and a `domains.yaml`.
 2. Root each product tree in a story node.
 3. Copy the seed nodes you want into `engineering/`.
-4. Wire the check into CI, with a test that fails when a decision id cited in code or tests no
-   longer resolves.
+4. Wire the check and the citation check into CI, run from an adroit checkout.
 5. Convert any existing prose specification into the ledger, then delete it.
 
 ### Minting a decision
@@ -492,9 +491,9 @@ A project wires in:
 - a `ledger/` with the roots it needs and a `domains.yaml`;
 - each product tree rooted in a story;
 - engineering nodes copied from the seed;
-- the dump and check tools, with the check in CI;
-- `@DecisionRef` bindings in code and tests, and a test that fails when a cited id no longer
-  resolves;
+- the tools, run from an adroit checkout and never copied into the project, with the check and
+  the citation check in CI;
+- `@DecisionRef` bindings in code and tests, which the citation check resolves;
 - a CLAUDE.md that links this document as the methodology and keeps for itself only what the
   ledger cannot hold: build commands, file locations, tool notes. It cites decisions; it never
   restates them, and where it and the ledger disagree, the ledger wins.
@@ -505,19 +504,25 @@ own ledger practice (as engineering nodes); this document is not copied into it.
 
 ## The tools
 
+The tools live in this repository and are run from the adopting project's directory; `ADROIT_DIR`
+names the adroit checkout:
+
 ```bash
-node tools/dump.mjs                                   # the whole ledger, one JSON line per node
-node tools/dump.mjs --scope <id|path>[,...]           # the scoped read for work on a decision
-node tools/dump.mjs --scope <id|path> --subtree       # ...plus the target's descendants
-node tools/dump.mjs --referrers <view:id>[,...]       # planning only: a view and its referrers
-node tools/dump.mjs --maintenance                     # keep context, dubious and questions
-node tools/dump.mjs --interactions                    # append this machine's interactions log
-node tools/server.mjs --check [--dir D]               # validate; exit 1 on any error
-node tools/server.mjs --diff [ref]                    # semantic diff against a ref (default main)
-node tools/server.mjs --open                          # the read-only explorer
+node $ADROIT_DIR/tools/dump.mjs                             # the whole ledger, one JSON line per node
+node $ADROIT_DIR/tools/dump.mjs --scope <id|path>[,...]     # the scoped read for work on a decision
+node $ADROIT_DIR/tools/dump.mjs --scope <id|path> --subtree # ...plus the target's descendants
+node $ADROIT_DIR/tools/dump.mjs --referrers <view:id>[,...] # planning only: a view and its referrers
+node $ADROIT_DIR/tools/dump.mjs --maintenance               # keep context, dubious and questions
+node $ADROIT_DIR/tools/dump.mjs --interactions              # append this machine's interactions log
+node $ADROIT_DIR/tools/server.mjs --check [--dir D]         # validate; exit 1 on any error
+node $ADROIT_DIR/tools/server.mjs --citations               # every @DecisionRef resolves; exit 1 if not
+node $ADROIT_DIR/tools/server.mjs --diff [ref]              # semantic diff against a ref (default main)
+node $ADROIT_DIR/tools/server.mjs --open                    # the read-only explorer
 ```
 
-`ADROIT_LEDGER_DIR` points the tools at another ledger, and `ADROIT_HOME` moves the interactions
-log root. The check enforces this document's layout, node, view, id, include, reference and token
+The project is the nearest directory at or above the working directory that holds a `ledger/`;
+`ADROIT_PROJECT_DIR` names it outright, `ADROIT_LEDGER_DIR` points the tools at another ledger,
+and `ADROIT_HOME` moves the interactions log root. The citation check reads the project's tracked
+code files, in comment form (`@DecisionRef <id>`) or annotation form (`@DecisionRef("id")`). The check enforces this document's layout, node, view, id, include, reference and token
 rules; open questions and uncited view fields are reported, never failed. A file the check cannot
 parse is reported as an error and the rest of the ledger is still validated.

@@ -7,6 +7,10 @@
 //   node tools/server.mjs --check   # validate the store, print errors, exit 1 if any
 //   node tools/server.mjs --dir D   # read a store other than ./ledger (fixtures, tests)
 //   node tools/server.mjs --diff [ref]  # semantic diff of the working tree vs a ref (default: main)
+//   node tools/server.mjs --citations   # every @DecisionRef in the project's code resolves; exit 1 if not
+//
+// Run from the adopting project (`node $ADROIT_DIR/tools/server.mjs --check`): the project is the
+// nearest directory holding a ledger/, or ADROIT_PROJECT_DIR.
 //
 // Everything is rebuilt from `ledger/` on every request — no index, no cache, no database. The
 // explorer is a MAINTENANCE surface: it shows every field of a node, the notes the agent dump
@@ -18,7 +22,7 @@ import { execFile } from 'node:child_process';
 import {
   loadLedger, loadLedgerAtRef, validate, warn, search, diffStores, hasDiff, viewIndex, shapeIndex,
   openGaps, interactionLogSummary, idsInDecisionTextFindings, reachOverclaimFindings, storeCounts,
-  treeIndex, nodeDetail, capabilityIndex, erdData, resolveUiAsset, gistOf,
+  treeIndex, nodeDetail, capabilityIndex, erdData, resolveUiAsset, gistOf, danglingCitations,
 } from './lib.mjs';
 
 const argv = process.argv.slice(2);
@@ -69,6 +73,18 @@ if (argv.includes('--diff')) {
     for (const k of silentRewires) console.log(`    ${k}`);
   }
   process.exit(0);
+}
+
+// --- --citations: every code citation resolves ------------------------------------
+if (argv.includes('--citations')) {
+  const dangling = danglingCitations(load());
+  if (!dangling.length) {
+    console.log('citations: every @DecisionRef resolves');
+    process.exit(0);
+  }
+  console.error(`${dangling.length} cited id(s) resolve to no decision:`);
+  for (const { id, sites } of dangling) console.error(`  ${id}  ${sites.map((x) => `${x.file}:${x.lineNo}`).join(' ')}`);
+  process.exit(1);
 }
 
 // --- --check: the CI/gate mode ------------------------------------------------
