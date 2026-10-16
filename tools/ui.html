@@ -51,7 +51,7 @@ header{display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:
   <div class="scope" id="modes" role="tablist" aria-label="View">
     <button data-mode="hierarchy">Hierarchy</button>
     <button data-mode="capabilities">Capabilities</button>
-    <button data-mode="models">Models</button>
+    <button data-mode="models">Views</button>
   </div>
   <span class="tag" id="counts"></span>
 </header>
@@ -80,8 +80,8 @@ window.addEventListener('hashchange', route);
 (async () => {
   const c = await (await fetch('/api/check')).json();
   const k = c.counts;
-  $('#counts').textContent = `${k.nodes} nodes · ${k.decisions} decisions · ${k.severable} severable · ` +
-    `${k.severed} severed · ${k.includes} includes · ${k.dubious} dubious · ${k.questions} questions` +
+  $('#counts').textContent = `${k.decisions} decisions · ` +
+    `${k.includes} includes · ${k.dubious} dubious · ${k.questions} questions` +
     (c.errors.length ? ` · ${c.errors.length} errors` : '');
   if (c.errors.length) {
     $('#counts').classList.add('err');

@@ -11,8 +11,8 @@ This repository holds three things:
 
 ## Tools
 
-- `node tools/dump.mjs --scope <id|path>` — the agent read; `--subtree`, `--maintenance`,
-  `--interactions` as ADROIT.md, The tools describes.
+- `node tools/dump.mjs --scope <id|path>` — the agent read; `--subtree`, `--referrers`,
+  `--maintenance`, `--interactions` as ADROIT.md, The tools describes.
 - `node tools/server.mjs --check` — validate `ledger/`; exit 1 on any error. `--diff [ref]`,
   `--open`.
 - `node --test tools/ledger.test.mjs` — the tools' own tests.

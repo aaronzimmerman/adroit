@@ -25,21 +25,22 @@ against the old decisions instead of re-litigating them.
 A ledger is a directory, conventionally `ledger/`, holding at most these entries:
 
 - `product/<app>/` — one tree per application, its root node holding the application's **story**.
-- `capabilities/<name>/` — reusable subtrees, each included wherever its "how" repeats.
+- `capabilities/<name>/` — reusable subtrees, each grafted wherever its "how" repeats.
 - `engineering/` — decisions that shape code: platforms, postures, coding practices, UX
   principles, and the project's rulings about its own ledger practice.
-- `models/` — the at-rest data models and views of the current implementation, with
-  `models/pending-changes/` for model migrations in flight.
+- `models/` — the typed **views**: the data shapes that cross section and trust boundaries in the
+  current implementation.
 - `domains.yaml` — the registry of id domains.
 
 Nothing else sits at the top level; a stray directory would hold files nobody checks. A ledger
 opens only the roots it has nodes for, and an absent root is an empty one.
 
-**The hierarchy is the filesystem.** Directory nesting is parentage. A directory's own node is its
-`self.yaml`; a node with no children is a plain `<slug>.yaml`. Re-parenting is a file move.
-References bind to decision ids, never to paths, so a move breaks nothing that cites the moved
-decisions. The files exist for git — diff, merge, blame and review — so two sessions claiming the
-same id surface as a merge conflict rather than a silent overwrite.
+**The hierarchy is the filesystem.** Directory nesting is parentage. A directory's own decision is
+its `self.yaml`; the directory's other files and subdirectories are its children, and a decision
+with no children is a plain `<slug>.yaml`. Re-parenting is a file move. References bind to
+decision ids, never to paths, so a move breaks nothing that cites the moved decision. The files
+exist for git — diff, merge, blame and review — so two sessions claiming the same id surface as a
+merge conflict rather than a silent overwrite.
 
 Where a node belongs is measured, not ascribed: a rule binding all work is engineering, a "how"
 that repeats in several places is a capability, and what serves one story is product. Trees emerge
@@ -48,86 +49,100 @@ is the normal, healthy response. A measurement nominates a move; a person blesse
 
 ## The node
 
-Every file under `product/`, `capabilities/` and `engineering/` is a **node**: a friendly name and
-a set of peer decisions. Its keys, in this order, and no others:
+Every file under `product/`, `capabilities/` and `engineering/` is a **node**, and a node is **one
+decision**. Its keys, in this order, and no others:
 
 ```yaml
+id: cart:guest-checkout-allowed       # domain:slug, unique across the ledger, never edited
 name: Guest checkout                  # a label for readers; the file name is its slug
-decisions:                            # non-empty; equal peers, none primary
-  - id: cart:guest-checkout-allowed   # domain:slug, unique across the ledger, never edited
-    decision: >-                      # one clause, stating one reversible choice
-      A shopper can check out without an account.
-    rejected:                         # optional: the alternatives that lost, each with why
-      - account required at checkout — abandonment outweighs the retention gained
-    severable: true                   # optional, default false
-  - id: cart:order-keyed-to-email
-    decision: A guest order is keyed to the email the shopper gives.
-includes: [payments]                  # capabilities whose whole tree joins this node's scope
-severed: [payments:card-on-file]      # severable inherited decisions this subtree is released from
+decision: >-                          # one clause, stating one reversible choice
+  A shopper can check out without an account, and the order is keyed to {order.email}.
+rejected:                             # optional: the parallel alternatives that lost, each with why
+  - account required at checkout — abandonment outweighs the retention gained
+references: [view:order]              # optional: views whose data this decision governs
+includes: [payments]                  # optional: capabilities grafted beneath this node
 dubious: parent ruling on accounts changed — re-read   # why this node is suspect, if it is
 questions:                            # open tensions, one line each
   - Does a guest see past orders when they later sign up?
-context:                              # the author's background; never a rule
-  why: checkout abandonment study, Q3
-  src: checkout walk, session 2026-10-04
+context: >-                           # one free-form text: the author's own thinking; never a rule
+  Requiring an account cost more carts than it retained.
 ```
 
-- **Name.** A label for readers. The file name is the name as a slug, and nothing keys off either.
-- **Decisions are peers.** No decision on a node is primary, and their order is display only. A
-  standing commitment over a subtree is simply a decision on the node whose subtree it governs.
+- **Id and name.** The id is what everything cites. The name is a label for readers; the file name
+  is the name as a slug, and nothing keys off either. Ids live only inside files.
 - **One clause, one choice.** A decision states one independently reversible choice. A ruling
-  spoken in one breath that holds several choices becomes several decisions: peers on one node,
-  or a governing node with the dependent choices nested beneath it. Granularity is about
+  spoken in one breath that holds several choices becomes several nodes: the clause that names the
+  ruling best keeps its id, and the others become child files beneath it. Granularity is about
   reversibility, not size: a long decision of one inseparable rule is fine; a short one hiding two
-  choices is not. Splitting a decision keeps its id on the clause it names best, so citations keep
-  resolving.
+  choices is not. Rationale goes to `context`; a definition is its own node beneath the node where
+  the term is used. Several fields each governed separately are separate nodes.
 - **Rules, not implementation.** A decision states the rule so a reader can comply or detect a
   violation. No table, column, class, route or migration names, unless the name is itself the
   thing chosen. A product decision states what someone needs to do, not how the app works; a
   mechanism is a product decision only where the mechanism is itself the choice, and the node says
-  why. A story states a need, never an interface: the interface is the emergent result of the
-  stories under the engineering decisions.
-- **Wording.** No ids inside decision text: relationships are structural (the parent is the
-  directory, a capability is an include). A term is defined in one decision and used, not
-  redefined, elsewhere. Name the actor ("an organizer", "the shopper"), never a bare "a user". A
-  decision never enumerates other decisions (no closed lists of siblings, no counts of kinds),
-  because the set is the tree; it may list its own parts. A decision states only the present rule:
-  no dates, revision notes or "previously, now" narrative. A changed ruling is rewritten whole to
-  read as if it had always been so.
+  why. A story states a need, never an interface, and never why it is vague: the interface is the
+  emergent result of the stories under the engineering decisions.
+- **Wording.** No record ids inside decision text: relationships are structural (the parent is
+  the directory, a capability is an include, a view is a reference or a field token). A term is
+  defined in one decision and used, not redefined, elsewhere. Name the actor ("an organizer", "the
+  shopper"), never a bare "a user". A decision never enumerates other decisions (no closed lists of
+  siblings, no counts of kinds), because the set is the tree; it may list its own parts. A decision
+  states only the present rule: no dates, revision notes or "previously, now" narrative. A changed
+  ruling is rewritten whole to read as if it had always been so.
 - **Rejected.** A decision that defies a fresh reader's instinct names the alternatives it beat,
-  each with the reason it lost. This is what stops the same idea being proposed fresh.
-- **Context is background only.** Why, provenance and history. Nothing in it may be needed to
-  comply; anything that binds is a decision or part of what one rejected.
+  each with the reason it lost. This is what stops the same idea being proposed fresh. A rejected
+  entry is only a parallel decision: a clear alternative that was on the table, with why it lost.
+  It is never a gloss on the decision, a reading of it, or decision content kept out of the
+  clause; what binds lives in `decision` or nowhere. Rejected text carries no history either: no
+  dates and no account of the decision's earlier form.
+- **References and field tokens.** A decision that governs a view's data lists the view under
+  `references:`. A decision that addresses one field writes it inline as `{slug.field}` — the
+  view's slug and the field's name — in its decision or rejected text, and the token implies the
+  reference, so `references:` is needed only where no token names the view. A token replaces prose
+  that names the field's data; concepts stay prose.
+- **Context is the author's own thinking.** One free-form text the author writes in, with no
+  sub-keys. It is never history (no dates, no account of how a decision was minted, split, lifted
+  or superseded) and never provenance, source pointers or links in disguise; version control holds
+  the history. Nothing in it may be needed to comply; anything that binds is a decision or part of
+  what one rejected.
 - **No implementation state.** No node says what code must change, what is or isn't built yet, or
   which code disagrees with it. The gap between decisions and code is found by comparing the two
-  and belongs to the build plan. The only described implementation state is the models directory.
+  and belongs to the build plan. The only described implementation state is the views.
 - **No workflow state.** Nodes carry no status. Superseded decisions are deleted, not marked.
   `dubious` and `questions` are maintenance notes, not workflow steps.
 
-## Scope
+## Reading the tree
 
-**A decision binds its own node and everything nested beneath it, and nothing else**, however
-universal it sounds. It binds silently: a descendant owes no statement of how it honors an
-inherited decision. A node's full context is its ancestry and its includes; there are no sideways
-references between decisions.
+**Every decision is a "how" of its direct parent.** The tree is one document read top-down in
+increasing specificity, never a scope chain. A decision describes its own node and informs the
+branch beneath it, and has no bearing anywhere else, however universal it sounds. It never
+legislates over its descendants: "every surface …" is the smell. A node that does something
+differently from what sits above it states its own how right there, and being deeper, it is the
+more specific reading. There is no severing.
 
-**Build by depth.** A product can be built by following each hierarchy strictly by depth. Within a
-tree, a node is judged and implemented only against its own chain — its ancestors, engineering,
-and the capabilities included on that chain — never against its siblings or cousins. Siblings are
-considered together only as refinements of their common parent: a restatement several siblings
-share is lifted to the parent only when every child of that parent states it, never when just some
-do (the same holds for an include), and a sibling whose refinement contradicts the parent is a finding
-against the parent. Two siblings disagreeing is not a contradiction.
+**Build by depth.** A product can be built by following each hierarchy strictly by depth. A node
+is judged and implemented only against its own reading: its ancestors, engineering, and the
+capabilities grafted on that path — never its siblings or cousins. Siblings are considered
+together only as refinements of their common parent: a decision every child of a node states is
+lifted to that node, never when just some do, and a sibling whose refinement contradicts the
+parent is a finding against the parent. Two siblings resolving the same situation differently is
+legitimate divergence, not a contradiction. A decision that only restates a rule already in a
+node's reading is deleted, and code citing it is re-pointed to the decision that holds the rule.
 
 **Capabilities.** A capability is a subtree under `capabilities/<name>/`, rooted at its own
-`self.yaml`, whose decisions together state what an includer takes on. A node includes it where the
-capability's "how" repeats; including brings the capability's whole tree, and whatever its nodes
-include, into the scope of the including node and every descendant. A capability holds
-**mechanics, and defaults** for when the includer says nothing. It never places an obligation on
-its includers ("whatever includes this must declare that"): such a rule is about authoring the
-ledger, which code cannot satisfy. A capability speaks its own vocabulary and never names a
-product or an includer. Capabilities include one another one way only; self-includes and include
-cycles are errors.
+`self.yaml`, whose decisions together state what an includer takes on. It exists so the same thing
+is built the same way everywhere its how repeats. `includes: [name]` grafts the capability's tree
+beneath the including node, read exactly as if its nodes were nested there, together with whatever
+its own nodes include, transitively. A capability is included on exactly the nodes that use it,
+never at a common ancestor merely because every child uses it somewhere; lifting an include
+follows the same every-child rule as lifting a decision. A node that does the capability's job
+differently states its own how on that same node, so the divergence lands on what differs.
+
+A capability holds **mechanics, and defaults** for when the includer says nothing. Nothing in it
+reaches outside its own graft, and it never places an obligation on its includers ("whatever
+includes this must declare that"): such a rule is about authoring the ledger, which code cannot
+satisfy. A capability speaks its own vocabulary and never names a product or an includer.
+Capabilities include one another one way only; self-includes and include cycles are errors.
 
 **Plumbing is engineering.** A rule that binds every request — the boundary, observability,
 security, flags, storage — is an engineering decision, not a capability, because nothing chooses
@@ -136,89 +151,93 @@ to include it.
 **Principles** are value judgments, ids under `principle:`, living in `engineering/`. Since every
 piece of work reads engineering whole, a principle binds everything with no reference needed.
 
-**Severing.** A decision is unseverable unless marked `severable: true`. A descendant opts out of
-an inherited severable decision only by listing its id under `severed`, which releases that node
-and its descendants. A decision may be severed only beneath the node that holds it, or beneath a
-node that includes the capability holding it. A severed decision still shows in the scoped read,
-marked severed, so the opt-out stays visible. Severability belongs to the declaring decision: a
-promise like data privacy is simply never severable.
-
 ## Reading a ledger
 
 Agents read the ledger **only through the dump**, never the raw files, so that maintenance notes
 are never weighed as law.
 
 - **Read your scope** before work on a decision: the engineering tree whole, then each ancestor
-  node whole, the target node, and every capability those include. Add the target's descendants
-  when the work changes the target itself. Searching for the decisions a task seems to touch
-  fails, because the decision that gets violated is the one the task did not seem to touch.
-- **The whole ledger** is read only for whole-ledger work, such as a vocabulary sweep.
+  node, the target node, and every capability grafted on that path, each as its whole tree. Add
+  the target's descendants when the work changes the target itself. Searching for the decisions a
+  task seems to touch fails, because the decision that gets violated is the one the task did not
+  seem to touch.
+- **The whole ledger** is read only for whole-ledger work, such as a vocabulary sweep or a
+  coherence probe.
 - **The dump leaves out** `context`, `dubious` and `questions` unless maintenance work asks for
   them.
+- **The referrer walk** lists a view and every decision that references it, explicitly or through
+  a field token. It is a planning instrument, never part of an implementation scope.
 - Detail below a decision is read from the code and its tests. There is no second description.
 
-## Models
+## Views
 
-`models/` describes the data at rest in the current implementation. It is not a decision tree,
-and no decision names a model, view or field: the model cites the decision, never the reverse.
+`models/` holds only **views**: the typed data shapes — transfer objects — that move between
+sections of the system or across a trust boundary. A view describes the implementation as it
+stands; it is not a decision tree. A view is one shape that crosses a boundary, never one per
+screen, and invariants at rest are stated as observable promises through the views that expose
+them. Storage is memorialized by the project's migrations and code, never mirrored in the ledger.
 
-A model file has an `id` (`model:<name>` or `view:<name>`), a short `decision` statement of the
-concept, and `shape.fields`, one line per field naming its kind, the decision ids that govern it,
-and its meaning and usage intent. A model is flat. Every transfer object that crosses a trust
-context is a **view**: a read-only shape naming its audience and the models it reads, mapping each
-field to the model field it projects or to the decision that defines its derivation. Only a view's
-derivations carry their own definition.
+A view file holds an `id` (`view:<slug>`), a short `decision` statement of the concept, a typed
+`schema:` holding `fields` only, and optionally `rejected`, `links` and `context`:
 
-Every decision id a field cites must resolve; those citations are the wiring from decisions to
-shape, and the model graph derives from them. A deployed field citing nothing is reported as a
-probable orphan, never failed.
+```yaml
+id: view:order
+decision: One order, as the shopper and the store both see it.
+schema:
+  fields:
+    email: string (cart:guest-checkout-allowed) — the address a guest order is keyed to
+    status: enum<OPEN|PAID|SHIPPED> — where the order stands
+    lines: list<ref<view:order-line>> — what was bought
+links:
+  consumes: [view:order-line]
+```
 
-**A model memorializes the deployed shape.** When a ruling changes what a model should be, the
-model file keeps stating what actually persists, and the divergence is held as a pending change:
+- **A field reads** `<type> [(ids)] [— meaning]`. The type is one space-free token from a closed
+  vocabulary: `string`, `text`, `int`, `long`, `double`, `bool`, `epoch`, `date`, `json`,
+  `enum<A|B>`, `ref<view:x>`, `derived<type>`, `list<type>`, `map<key,type>` (keys `string`, `int`
+  or `long`). A bare id where no view crosses in that context is a plain scalar, never a ref to an
+  invented view. Field names are plain, with no dots, so tokens can address them.
+- **Citations are the wiring.** Every id a field cites must resolve; those citations link the
+  shape to the decisions that rule it. A field citing nothing is reported as a probable orphan,
+  never failed.
+- **A view states current truth.** It has no tables and no pending shape: a ruled but unbuilt
+  shape lives in the decisions that reference the view, and the view changes when the
+  implementation does.
+- **Links.** `consumes` names only other views; `grounds` names the principles a view grounds in.
+- **A shape change is planned wide.** Before a view's shape changes, walk its referrers and address
+  every one: each is declared unaffected, or given a decision at its own node saying how the new
+  shape reaches it.
 
-- Setting a field's intended definition records a **pending entry** on the model file beside the
-  deployed shape it will replace.
-- **Beginning a migration** moves named pending entries off the model file into a pending-change
-  file under `models/pending-changes/`, so each entry lives in one place at a time. A pending
-  change holds its `name` (unique among open changes), its `origin` (the decision ids whose ruling
-  required it), its `operations` (each naming a model field and carrying the deployed and intended
-  shapes) and its `state`.
-- **Landing a migration** is a person's attestation that it has shipped — no tool can observe a
-  deployment. In one act the model file takes the intended shape and the pending change is
-  deleted. A refused landing changes nothing.
-- A tool reading a model projects its pending changes onto it to show deployed and intended side
-  by side.
-
-The pending change is the only staged state that endures. A ruling has no staged form: it is a
-point in time, its only in-flight state is the uncommitted working tree, and source control is its
-history.
+A ruling has no staged form: it is a point in time, its only in-flight state is the uncommitted
+working tree, and source control is its history.
 
 ## Ids and the registry
 
 An id is `domain:slug`. The slug is two to five kebab-case words naming the decision's substance
 (`refusal-writes-nothing`, not `rule-7`), unique across the ledger, never numbered. The domain is
 looked up, never inferred from the id's shape: a domain declared in `domains.yaml`, a capability's
-name, or a reserved kind (`principle`, `story`, `model`, `view`). Declare a domain before any
-decision uses it.
+name, or a reserved kind (`principle`, `story`, `view`). Declare a domain before any decision uses
+it.
 
 `domains.yaml` holds a `corpus:` key naming the ledger, then one line per domain: the lowercase
 domain and a one-line scope.
 
-Every structural name — an included capability, a severed id, a model field's citation — must
-resolve, and no per-node waiver legalizes one that doesn't.
+Every structural name — an included capability, a reference, a field token, a field's citation —
+must resolve, and no per-node waiver legalizes one that doesn't.
 
 ## Dubious
 
 `dubious` is one line saying why a node is suspected of no longer being coherent; it is absent when
 the node is not suspect. It says the node's validity is not assured.
 
-- **What makes a node suspect.** Any edit to a node's decisions, includes, severed list or context
-  makes every descendant suspect, and, for a node inside a capability, every node that includes
-  that capability, with its descendants. Moving a node makes the moved subtree suspect, since its
-  scope changed. Model operations make nothing suspect: they always follow from a decision change
-  that already did. Asking, answering or dropping a question makes nothing suspect.
-- **How it is written.** The commit that makes a change writes the mark onto every suspect not
-  read through before the commit, naming the node whose change made it suspect. A person can also
+- **What makes a node suspect.** Any edit to a node's decision, rejected, references, includes or
+  context makes every descendant suspect, and, for a node inside a capability, every node that
+  includes that capability, directly or through another capability it includes, with its
+  descendants. Deleting a node inside a capability makes every includer of that capability
+  suspect the same way. Moving a node makes the moved subtree suspect, since its reading changed. Asking, answering or dropping a question makes nothing suspect.
+- **How it is written.** The commit that makes a change writes the mark onto every suspect,
+  naming the node whose change made it suspect; the mark always lands, and reading a suspect
+  before the commit clears nothing. A person can also
   mark a node by hand on seeing a contradiction, stating what they saw. The commit is never gated
   on clearing the suspects: the mark is the guard, and it outlives the commit.
 - **Cascade.** Marking a node marks every descendant too, each naming the marked ancestor. The mark
@@ -234,7 +253,7 @@ it, and it carries a reason rather than a flag because the next reader is owed w
 
 ## Questions
 
-`questions` lists one-line open tensions in or around a node's decisions. A complex system always
+`questions` lists one-line open tensions in or around a node's decision. A complex system always
 carries tension, and a ledger that could hold only settled rulings would either lose the tension or
 call itself broken. A ledger with open questions is in good standing: the check reports them and
 never counts them as faults.
@@ -247,6 +266,13 @@ that resolve it, or dropped as unhelpful. While it stays, it is future work.
 ## The protocol
 
 - **Read your scope first**, through the dump.
+- **Plan wide, build closed.** Work runs in two contexts. Planning reads wide: the blast radius of
+  a change is assessed against the ledger, and the decisions that propagate it land with the
+  person, each at the node it touches. Implementation gets a closed brief naming only the law
+  already ruled, with the standing instruction "this unit only; report adjacencies, don't fix". The
+  implementer surfaces anything outside its brief, never acts on it, and never receives the wider
+  graph — no referrer walk, no maintenance notes. Bias toward surfacing: a false positive costs one
+  sentence; a miss is a leak.
 - **Echo behavior before minting.** Before writing a decision from a person's ruling, restate the
   concrete behavior it will produce, in their words, and get the yes on that, not on the
   decision's wording. Translating straight into ledger vocabulary silently supplies decisions they
@@ -262,12 +288,13 @@ that resolve it, or dropped as unhelpful. While it stays, it is future work.
   decaying as adoption grows; a change is judged against the tolerance of the subtree it touches.
   Better in a vacuum is not better here.
 - **Every decision writes a file.** Every decision made mid-cycle, including calls below the bar
-  of asking, becomes a decision in the ledger in the same change that acts on it, with its why,
-  its source, what it rejected, and its place in the tree.
+  of asking, becomes a node in the same change that acts on it, with what it rejected and its place
+  in the tree.
 - **A ruling lands as one atomic commit** across every file it touches.
 - **Supersession deletes.** A superseded decision is deleted whole; git history is the archive.
-  Anything nested beneath a deleted node is re-parented in the same change, and code and test
-  citations are rebound. Two decisions that disagree mean one was superseded.
+  Deleting a node deletes everything nested beneath it, as deleting a feature deletes its parts;
+  whatever should survive is moved out first. Code and test citations of the deleted ids are
+  rebound or removed. Two decisions that disagree mean one was superseded.
 - **Rewrite over patch.** A node patched more than twice is rewritten whole. Every programmatic
   edit verifies its anchor matched and its result landed; a work log records verified results,
   never the plan.
@@ -299,7 +326,7 @@ and never committed (a committed log conflicts on every merge). One JSON object 
 
 ```json
 {"ts": 1791636134865, "kind": "resolved-fork", "decisions": ["cart:guest-checkout-allowed"],
- "note": "guest order lookup answered by the email-key rule", "where": "ledger/product/shop", "src": "checkout walk 2026-10-04"}
+ "note": "guest order lookup answered by the email-key rule", "where": "ledger/product/shop", "src": "checkout walk"}
 ```
 
 `ts` is epoch milliseconds; `kind` is `resolved-fork`, `prevented` or `gap`; `note` is a bare
@@ -311,27 +338,31 @@ reading an absent log as empty. No agent reads events as decision input.
 
 - **Regeneration probe** — tests whether a tree is sufficient. A fresh agent with no session
   context reads only the scoped dump of the tree under test with its descendants, never a curated
-  subset, and reports where two engineers would build observably different products and where
-  decisions contradict. Its prompt declares facts ruled outside the tree, and neighbouring trees as
-  black boxes, as givens. Its framing stays neutral: report exactly as many as found. Stop when the
-  findings turn predominantly editorial.
-- **Coherence probe** — when a tree settled earlier may disagree with the ledger as it now stands,
-  a fresh agent reads the target tree's scoped read (the subtree, engineering, its ancestor nodes
-  and the capabilities included on its chain) and reports contradictions within it. It is never
-  judged against the whole ledger: a decision elsewhere binds nothing in the target, so comparing
-  against it manufactures false conflicts. Siblings never contradict each other (see Build by
-  depth); a rule in one that tries to govern another's entity is a scope finding. Nor is the probe framed on
-  what changed since: a decision is right or wrong against its scope now.
+  subset, and reports where two engineers would build observably different products. Its prompt
+  declares facts ruled outside the tree, and neighbouring trees as black boxes, as givens. Its
+  framing stays neutral: report exactly as many as found. Stop when the findings turn
+  predominantly editorial.
+- **Coherence probe — the compile check.** A contradiction exists only when one node's reading
+  disagrees with itself: the node, its ancestor path, engineering, and the capability trees grafted
+  on that path, a graft's interior nodes read against their own graft path, never against the
+  includer's other branches. It is checked per node; siblings and cousins are never compared.
+  Every proposed finding is validated mechanically: a pair of decisions that appear together in no
+  node's reading is discarded, whatever the probe argued. Nor is the probe framed on what changed
+  since: a decision is right or wrong against its reading now.
+
+Contradiction-freedom is compilation only. Whether the decisions are functionally right is proven
+by building from them, never by further editorial sweeps: once the ledger compiles, build.
 
 Give a probe a capable model that has not seen the session. Never prompt "say none if
 sufficient" or "don't go easy": framing alone has moved a finding count threefold. A capable
 agent always finds something, so watch severity fall, not the count reach zero.
 
-**Triage** each finding into one of five buckets:
+**Triage** each finding the moment it is raised, conversationally, into one of five buckets —
+never into a task file:
 
 1. **A real gap.** Ask the person.
 2. **A re-litigation** of a ruled point. The decision lacked its losers: add them to `rejected`
-   and don't re-ask.
+   right there and don't re-ask.
 3. **A miss of plain text, or an artifact of the probe's scope.** Note it and move on.
 4. **Your own defect** — a failed edit, a stale phrase, patch sediment. Fix it.
 5. **An edge case.** Foreclose it (see Practice).
@@ -355,11 +386,11 @@ The protocol is the rule; this is how it is done well.
 ### Minting a decision
 
 1. Read your scope.
-2. Find the parent: the node this decision sharpens. If nothing fits, it may need a new story or
-   capability.
+2. Find the parent: the node this decision is a how of. If nothing fits, it may need a new story
+   or capability.
 3. Echo the concrete behavior in the person's words and get the yes on that.
 4. Write the rule as one clause, with no implementation names and no ids. State what someone
-   needs, not how the app does it.
+   needs, not how the app does it. Name a view's field as a token where the decision governs it.
 5. Fill `rejected` with every alternative that was actually on the table; if a fresh reader would
    find the rule surprising, this is mandatory.
 6. Run the check and read its complete output and exit code — never through `tail`.
@@ -386,7 +417,7 @@ This is how a tree is built or checked conversationally, one story at a time.
 Run one when a tree is ruled, or after a burst of rapid rulings: rewrite the most-patched nodes
 whole, keeping every ruling; read the tree end to end as one document; sweep for vocabulary left
 behind by superseded rulings; split any clause that can be reversed alone; re-home nodes filed
-where other work's scope cannot see them.
+where other work's reading cannot see them.
 
 ### Compliance
 
@@ -442,6 +473,10 @@ read each implementation diff against the scoped ledger before it is handed back
 | A superseded decision was kept because a test would go red | Delete it; the red test is the worklist |
 | A fix branch cited a decision that existed only on the ledger branch | Carry new nodes onto the code branch byte-identical |
 | A proposal marked "awaiting sign-off" was implemented anyway | A question you wrote down is not yours to answer |
+| Context and rejected drifted into dated history, source pointers and glosses on the rule | Version control holds history; context is the author's own thinking, rejected holds only parallel alternatives |
+| A high node said "every surface …" and its descendants inherited a rule nobody ruled for them | A decision describes its own node; a node that needs the rule states its own how |
+| Siblings were compared and their divergence filed as a contradiction | Compare only within one node's reading; siblings diverging is legitimate |
+| A view's shape changed and the decisions that relied on the old shape went unread | Walk the referrers first; address each one at its own node |
 
 ## The engineering seed
 
@@ -474,6 +509,7 @@ own ledger practice (as engineering nodes); this document is not copied into it.
 node tools/dump.mjs                                   # the whole ledger, one JSON line per node
 node tools/dump.mjs --scope <id|path>[,...]           # the scoped read for work on a decision
 node tools/dump.mjs --scope <id|path> --subtree       # ...plus the target's descendants
+node tools/dump.mjs --referrers <view:id>[,...]       # planning only: a view and its referrers
 node tools/dump.mjs --maintenance                     # keep context, dubious and questions
 node tools/dump.mjs --interactions                    # append this machine's interactions log
 node tools/server.mjs --check [--dir D]               # validate; exit 1 on any error
@@ -482,5 +518,6 @@ node tools/server.mjs --open                          # the read-only explorer
 ```
 
 `ADROIT_LEDGER_DIR` points the tools at another ledger, and `ADROIT_HOME` moves the interactions
-log root. The check enforces this document's layout, node, model, id, include and severing rules;
-open questions and uncited model fields are reported, never failed.
+log root. The check enforces this document's layout, node, view, id, include, reference and token
+rules; open questions and uncited view fields are reported, never failed. A file the check cannot
+parse is reported as an error and the rest of the ledger is still validated.

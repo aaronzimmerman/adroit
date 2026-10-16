@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import {
-  loadLedger, loadLedgerAtRef, validate, warn, search, diffStores, hasDiff, modelIndex, shapeIndex,
+  loadLedger, loadLedgerAtRef, validate, warn, search, diffStores, hasDiff, viewIndex, shapeIndex,
   openGaps, interactionLogSummary, idsInDecisionTextFindings, reachOverclaimFindings, storeCounts,
   treeIndex, nodeDetail, capabilityIndex, erdData, resolveUiAsset, gistOf,
 } from './lib.mjs';
@@ -84,14 +84,17 @@ if (argv.includes('--check')) {
   }
   const errors = validate(ctx);
   const c = storeCounts(ctx);
-  const mx = modelIndex(ctx);
+  const vx = viewIndex(ctx);
   const sx = shapeIndex(ctx);
   const line =
-    `ledger: ${c.nodes} nodes, ${c.decisions} decisions (${c.severable} severable, ${c.severed} severed), ` +
+    // One decision per node file, so the two counts agree in a valid store; a previous-format
+    // file of several decisions is a check fault, and the node count shows it.
+    `ledger: ${c.decisions} decisions${c.nodes !== c.decisions ? ` in ${c.nodes} node files` : ''}, ` +
     `${c.includes} include(s), ${c.dubious} dubious node(s), ${c.questions} open question(s), ` +
     `${ctx.trees.length} trees, ` +
-    `${mx.models.length} models/views (${sx.edges.length} field→decision link(s) into ` +
-    `${new Set(mx.refs.map((r) => r.from)).size} decision tree(s), ${sx.unlinked.length} unlinked field(s)), ` +
+    `${c.views} views (${sx.edges.length} field→decision link(s) into ` +
+    `${new Set(vx.refs.map((r) => r.from)).size} decision tree(s), ${sx.unlinked.length} unlinked field(s)), ` +
+    `${c.references} decision→view reference(s), ` +
     `${ctx.interactions.length} interaction event(s), ` +
     // OPEN is a rule, not a kind: a gap that names the decision it produced is closed (openGaps).
     `${openGaps(ctx).length} open gap(s), ` +
@@ -160,7 +163,7 @@ const server = http.createServer((req, res) => {
     if (p === '/api/search') {
       const ctx = load();
       const hits = search(ctx, { q: url.searchParams.get('q') ?? '' });
-      return json(res, { count: hits.length, nodes: hits.map((n) => ({ key: n.rel, name: n.name, ids: n.ids, gist: gistOf(ctx, n) })) });
+      return json(res, { count: hits.length, nodes: hits.map((n) => ({ key: n.rel, name: n.name, id: n.id, gist: gistOf(ctx, n) })) });
     }
     if (p === '/api/capability') {
       const all = capabilityIndex(load());
@@ -169,7 +172,7 @@ const server = http.createServer((req, res) => {
       const one = all.find((c) => c.name === name);
       return one ? json(res, one) : json(res, { error: 'no such capability' }, 404);
     }
-    if (p === '/api/erd') return json(res, erdData(load(), null));
+    if (p === '/api/erd') return json(res, erdData(load()));
     return json(res, { error: 'not found' }, 404);
   } catch (e) {
     return json(res, { error: e.message, stack: e.stack }, 500);
@@ -186,7 +189,7 @@ const listen = (port, tries = 12) => {
     const urlStr = `http://127.0.0.1:${server.address().port}/`;
     const ctx = load();
     const errors = validate(ctx);
-    console.log(`adroit — ${ctx.nodes.length} nodes, ${storeCounts(ctx).decisions} decisions` +
+    console.log(`adroit — ${storeCounts(ctx).decisions} decisions` +
       (errors.length ? `, ${errors.length} VALIDATION ERRORS` : ', validated'));
     console.log(`  ${urlStr}`);
     if (argv.includes('--open')) execFile('open', [urlStr]);

@@ -141,19 +141,11 @@
   letter-spacing: .08em; color: var(--muted); margin-left: auto; flex: none;
 }
 .ebox .eb { max-height: 236px; overflow-y: auto; }
-.ebox .et {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--faint); padding: 4px 9px 2px; background: var(--surface2);
-  border-bottom: 1px solid var(--line); position: sticky; top: 0;
-}
-.ebox .et.gone { color: var(--amber); }
 .ebox .ef { display: flex; gap: 6px; padding: 1px 9px; align-items: baseline; }
 .ebox .ef:hover { background: var(--surface2); }
 .ebox .ef .fn { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
-.ebox .ef .fn.pk { color: var(--gold); font-weight: 500; }
 .ebox .ef .ft { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
-  color: var(--faint); white-space: nowrap; }
-.ebox .ef .fq { color: var(--faint); font-size: 10px; }
+  color: var(--faint); text-align: right; overflow-wrap: anywhere; }
 .ebox .ee { padding: 6px 9px; color: var(--faint); font-style: italic; font-size: 12px; }
 .ebox .efoot {
   padding: 4px 9px; border-top: 1px solid var(--line); background: var(--surface2);

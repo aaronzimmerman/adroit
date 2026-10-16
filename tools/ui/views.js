@@ -6,7 +6,7 @@
 // `/api/search`): no rule about the store is re-derived in the browser.
 //
 // The explorer is a MAINTENANCE surface, so a node shows whole: its name, every decision (with
-// rejected and severable), includes, severed, and the notes the agent dump leaves out — dubious,
+// rejected), includes, and the notes the agent dump leaves out — dubious,
 // questions, context.
 (() => {
   'use strict';
@@ -23,10 +23,10 @@
     mode: null,
     host: null,
     tree: null,            // /api/tree
-    node: new Map(),       // key -> tree row (nodes by path, models by id, folders by tree)
+    node: new Map(),       // key -> tree row (nodes by path, views by id, folders by tree)
     parent: new Map(),     // key -> parent key
     open: new Set(),       // which folders/nodes are expanded
-    sel: null,             // the node (or model) in the detail panel
+    sel: null,             // the node (or view) in the detail panel
     q: '',                 // the tree filter, kept across mode switches with its result
     match: null,           // node keys matching the tree search, or null for "no search"
     cap: null,             // the capability overlay's pick
@@ -86,7 +86,7 @@
     const nav = (xs, lbl) => (xs && xs.length ? `<h3>${lbl}</h3>${xs.map((x) =>
       `<button class="lnk" data-vrec="${esc(x.key)}"><span class="id">${esc(x.name)}</span></button>`).join('')}` : '');
     const decision = (x) => `<div class="dec">
-        <div class="dtop"><span class="did">${esc(x.id)}</span>${x.severable ? '<span class="vcount">severable</span>' : ''}</div>
+        <div class="dtop"><span class="did">${esc(x.id)}</span></div>
         <div class="stmt">${esc(x.decision)}</div>
         ${(x.rejected || []).length ? `<h3>Rejected</h3><ul>${list(x.rejected)}</ul>` : ''}
         ${(x.interactions || []).length ? `<h3>Interactions</h3><ul>${list(x.interactions.map((e) => `${e.kind}: ${e.note}`))}</ul>` : ''}
@@ -96,12 +96,10 @@
       <h2>${esc(d.name || d.key)}</h2>
       <div class="crumb">${esc(d.file || d.key)}</div>
       ${d.dubious !== undefined && d.dubious !== null ? `<div class="flag"><b>Dubious</b> ${esc(d.dubious)}</div>` : ''}
-      ${(d.decisions || []).map(decision).join('')}
+      ${d.id ? decision(d) : ''}
       ${chips(d.includes, 'Includes')}
-      ${chips(d.severed, 'Severed')}
       ${chips((d.inScope || []).filter((c) => !(d.includes || []).includes(c)), 'Capabilities in scope from above')}
-      ${chips((d.severedHere || []).filter((c) => !(d.severed || []).includes(c)), 'Severed from above')}
-      ${chips(d.tables, 'Tables')}
+      ${chips(d.fields, 'Fields')}
       ${(d.questions || []).length ? `<h3>Open questions</h3><ul>${list(d.questions)}</ul>` : ''}
       ${d.context !== undefined && d.context !== null ? `<h3>Context</h3><pre class="why">${esc(textOf(d.context))}</pre>` : ''}
       ${nav(d.ancestors, 'Ancestors')}
@@ -226,7 +224,7 @@
     paintSelection();
   }
 
-  const isLeaf = (n) => n.kind === 'node' || n.kind === 'model';
+  const isLeaf = (n) => n.kind === 'node' || n.kind === 'view';
   function row(n, depth) {
     const kids = (n.children || []).length;
     const open = S.open.has(n._key);
@@ -238,7 +236,6 @@
     ].filter(Boolean).join(' ');
     const badges = (n.includes || [])
       .map((c) => `<span class="capb${S.cap === c ? ' on' : ''}" title="includes">${esc(c)}</span>`).join('')
-      + ((n.severed || []).length ? `<span class="mark" title="severs ${esc(n.severed.join(', '))}">✂${n.severed.length}</span>` : '')
       + (n.dubious ? '<span class="mark warn" title="dubious">?</span>' : '')
       + (n.questions ? `<span class="mark" title="open questions">Q${n.questions}</span>` : '');
     const label = isLeaf(n) ? n.name : n.label;
@@ -247,7 +244,6 @@
       <span class="tcaret">${caret}</span>
       ${n.accent ? `<span class="dot" style="background:${esc(n.accent)}"></span>` : ''}
       <span class="tid">${esc(label)}</span>
-      ${isLeaf(n) && (n.ids || []).length > 1 ? `<span class="tn">${n.ids.length} decisions</span>` : ''}
       <span class="tgist">${esc(isLeaf(n) ? n.gist : (n.purpose || ''))}</span>
       ${badges}
       <span class="tn">${kids || !isLeaf(n) ? n.count : ''}</span>
@@ -350,15 +346,15 @@
           ${root ? `<button class="rootname" data-vrec="${esc(root.key)}">${esc(root.name)}</button>` : ''}
         </div>
         <div class="rootdecs">${root
-          ? root.decisions.map((x) => `<div class="rootdec">
-              <span class="id">${esc(x.id)}</span>
-              <div class="txt">${esc(x.decision || '')}</div></div>`).join('')
+          ? `<div class="rootdec">
+              <span class="id">${esc(root.id || '')}</span>
+              <div class="txt">${esc(root.decision || '')}</div></div>`
           : `<div class="none">no root node — capabilities/${esc(c.name)}/self.yaml</div>`}</div>
         ${strip('Depends on', c.uses)}
         ${strip('Depended on by', c.usedBy)}
       </div>
       <div class="vsec">
-        <h3>Its nodes (${c.nodes} · ${c.decisions} decisions)</h3>
+        <h3>Its decisions (${c.nodes})</h3>
         <div class="tree">${rows.join('') || '<div class="none">no node yet</div>'}</div>
         <h3>Included by (${c.includerCount})</h3>
         ${c.includersByTree.length ? c.includersByTree.map((g) => `
@@ -372,23 +368,20 @@
     paintSelection();
   }
 
-  // ----------------------------------------------------------------- MODELS
+  // ------------------------------------------------------------------ VIEWS
+  // The catalog of typed views: each box a view's fields, each line a ref<view:…> a field carries or
+  // a view another consumes. Storage is not drawn — it lives in the migrations and Java models.
   async function models() {
     const main = $('#v-main');
     if (!S.erd) {
       S.erd = await get('/api/erd');
       S.pos = loadPos();
     }
-    const s = S.erd.schema;
     main.innerHTML = `<div class="vpane">
       <div class="vbar">
-        <span class="vcount">${S.erd.entities.length} models &amp; views · ${S.erd.edges.length} references</span>
+        <span class="vcount">${S.erd.entities.length} views · ${S.erd.edges.length} references</span>
         <button class="vbtn" id="e-fit">Fit</button>
         <button class="vbtn" id="e-relayout">Re-lay out</button>
-        <span class="vcount">${s.present
-          ? `schema: ${s.tables} tables, ${s.columns} columns from ${s.migrations} migrations (V${s.highWater})`
-          : 'no database schema — models describe their fields in the ledger'}</span>
-        ${s.unclaimed?.length ? `<span class="vcount" title="${esc(s.unclaimed.join(', '))}">${s.unclaimed.length} table(s) no model claims</span>` : ''}
       </div>
       <div class="erd" id="e-stage"><div class="plane" id="e-plane"><svg id="e-lines"></svg></div></div>
     </div>`;
@@ -399,19 +392,12 @@
 
   function boxHtml(e) {
     const p = S.pos[e.id] || { x: 0, y: 0 };
-    const cols = (t) => t.columns.map((c) => `<div class="ef">
-      <span class="fn${c.pk ? ' pk' : ''}">${esc(c.name)}</span>
-      ${c.nullable ? '' : '<span class="fq">·</span>'}
-      <span class="ft">${esc(c.type.replace('CHARACTER VARYING', 'VARCHAR').replace(' PRECISION', ''))}</span>
-    </div>`).join('');
-    const body = e.kind === 'view'
-      ? (e.derivations.length
-        ? `<div class="et">derived fields</div>${e.derivations.map((d) => `<div class="ef"><span class="fn">${esc(d.toLowerCase())}</span></div>`).join('')}`
-        : '<div class="ee">a read contract — its fields are its own derivations</div>')
-      : (e.tables.length
-        ? e.tables.map((t) => `${e.tables.length > 1 || !t.found
-          ? `<div class="et${t.found ? '' : ' gone'}">${esc(t.table)}${t.found ? '' : ' — not in the schema'}</div>` : ''}${cols(t)}`).join('')
-        : '<div class="ee">no schema mapping yet</div>');
+    const body = e.fields.length
+      ? e.fields.map((f) => `<div class="ef">
+          <span class="fn">${esc(f.name)}</span>
+          <span class="ft">${esc(f.type)}</span>
+        </div>`).join('')
+      : '<div class="ee">no fields</div>';
     return `<div class="ebox ${e.kind}" data-vrec="${esc(e.id)}" data-ebox="${esc(e.id)}"
       style="left:${p.x}px;top:${p.y}px">
       <div class="eh"><span class="en">${esc(e.name)}</span><span class="ek">${esc(e.kind)}</span></div>
@@ -427,8 +413,8 @@
   }
 
   /** Auto-layout: masonry columns, in an order that keeps a reference's two ends near each other.
-   *  Deliberately not a force simulation — 43 boxes with 7 edges between them is a LIST with a few
-   *  joins, and a spring layout would make that look like a web it is not. Drag anything. */
+   *  Deliberately not a force simulation — a catalog of views is a LIST with joins, and a spring
+   *  layout would make that look like a web it is not. Drag anything. */
   function layout({ keepDragged = false } = {}) {
     const stage = $('#e-stage');
     const W = 232, GAP = 22;
@@ -470,7 +456,7 @@
 
   /** The reference lines. Straight, from box edge to box edge, with an arrow at the end that
    *  depends — legibility over fashion, and orthogonal routing would need a router nobody asked
-   *  for at seven edges. */
+   *  for. */
   function drawLines() {
     const rect = (id) => {
       const el = document.querySelector(`[data-ebox="${CSS.escape(id)}"]`);

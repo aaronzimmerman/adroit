@@ -4,31 +4,35 @@
 //
 //   engineering/           read in full by every piece of work
 //   capabilities/<name>/   self-contained trees, each rooted at a `self.yaml` stating what an includer takes on
-//   models/                the data at rest, plus the flat read contracts (views) beside it
+//   models/                the typed views — the DTOs that cross section and trust boundaries
 //   product/<app>/         one tree per app, its root node at `self.yaml`
 //
-// THE NODE FORMAT (user-ruled 2026-10-11). Every decision file under engineering/, capabilities/ and
-// product/ is a NODE: a friendly `name` plus a list of one-clause `decisions` (each `id`,
-// `decision`, optional `rejected`, optional `severable`), optionally `includes` (capabilities whose
-// whole tree joins the scope of the node and every descendant), `severed` (severable decision ids
-// this node and its descendants are released from), and the maintenance notes `dubious`,
-// `questions` and `context`. Directory nesting is parentage: a directory's own node is its
-// `self.yaml`, and every decision of a node binds everything nested beneath it and nothing else.
-// The file name is derived from the name and carries no meaning; ids live only inside the file.
+// THE NODE FORMAT — ONE DECISION PER FILE (user-ruled 2026-10-14). Every decision file under
+// engineering/, capabilities/ and product/ is a NODE holding exactly one decision: its `id`, a
+// friendly `name`, the one-clause `decision`, optional `rejected`, optional `references` naming
+// the view records whose data the decision governs (plus, implicitly, every view a
+// `{slug.field}` token in its text names), optionally `includes` (capabilities whose whole tree
+// joins the scope of the node and every descendant), and the maintenance notes `dubious`,
+// `questions` and `context`. Directory nesting is parentage: a directory's own decision is its
+// `self.yaml`, and a leaf file is a child decision of its directory. The file name carries no
+// meaning; the id lives only inside the file.
 //
-// `models/` keeps its own format (one record per file, `shape:` blocks whose field citations name
-// decision ids). A capability is nothing but its subtree: its root node's first decision states what
+// Internally a node still carries `ids` (a list): a file in one of the PREVIOUS formats — the
+// `decisions:` list of 2026-10-11, or the host record + `peers:` before it — is read as a node of
+// several decisions so `--diff` can compare against refs that predate one-decision-per-file. Such
+// a file FAILS the check in the working tree: its retired keys are errors there.
+//
+// `models/` keeps its own format: one VIEW record per file, each carrying a TYPED `schema:` block —
+// the DTO contract that crosses boundaries, its field types a closed vocabulary the check validates
+// (see parseSchemaField), its field citations naming decision ids. The legacy `model:` records and
+// their `shape:` / `tables:` / `pending:` blocks are retired (user-directed 2026-10-13): storage is
+// memorialized by the migrations and Java models, never in the ledger. A capability is nothing but its subtree: its root node's decisions state what
 // an includer takes on, and its nodes' `includes` are its dependencies. The capability contract file
 // is retired (user-ruled 2026-10-12) — one anywhere in the store fails the check.
 //
 // The interaction events (ADROIT.md, The interactions log) are NOT in the store: they are usage
 // telemetry, appended to a machine-local log outside any repository
 // (`~/.adroit/<corpus>/interactions.jsonl`), validated line by line on read.
-//
-// The loader still READS the previous tree format (one host record per file + `peers:`), because
-// `--diff` compares the working tree against git refs that predate the node format. A file in that
-// shape is adapted into a node on load (legacyNode) and FAILS the check in the working tree — the
-// retired keys are errors there.
 //
 // Deliberately: no index, no SQLite, no cache. Several hundred small files parse in milliseconds,
 // so every structure here is rebuilt per request (derive-dont-materialize).
@@ -58,20 +62,20 @@ export const NODE_ROOTS = ['capabilities', 'engineering', 'product'];
 export const RETIRED_INTERACTIONS_DIR = 'interactions';
 
 /** A node's keys, in the order a file writes them. */
-export const NODE_KEYS = ['name', 'decisions', 'includes', 'severed', 'dubious', 'questions', 'context'];
-/** A decision entry's keys, in order. */
-export const DECISION_KEYS = ['id', 'decision', 'rejected', 'severable'];
+export const NODE_KEYS = ['id', 'name', 'decision', 'rejected', 'references', 'includes', 'dubious', 'questions', 'context'];
+/** The keys of a node's one decision — the part a previous-format entry maps onto. */
+export const DECISION_KEYS = ['id', 'decision', 'rejected', 'references'];
 /** Keys of retired formats, each with what replaced it — a hard error, never ignored. */
 export const RETIRED_NODE_KEYS = {
-  id: 'ids live in decisions[].id',
-  decision: 'decision text lives in decisions[].decision',
-  rejected: 'rejected lives on its decision entry',
-  severable: 'severable lives on its decision entry',
-  peers: 'every decision of a node is an entry of decisions:',
+  decisions: 'one decision per file — id, name and decision sit at the top level, and each other ' +
+    'decision is its own file in the node\'s directory',
+  severable: 'severs are retired — a decision is a how of its direct parent',
+  severed: 'severs are retired — a decision is a how of its direct parent',
+  peers: 'one decision per file — each peer is its own file in the node\'s directory',
   links: 'links are retired — parentage is the directory, a capability is brought in by includes:',
   mounts: 'renamed includes:',
-  severs: 'renamed severed:',
-  commitments: 'a rule binding the subtree is a decision of the node, marked severable: true when a descendant may sever it',
+  severs: 'severs are retired — a decision is a how of its direct parent',
+  commitments: 'a rule of the node is a decision file in its directory',
 };
 
 /** The tree a path inside the store belongs to — the directory, so there is one string to reason
@@ -93,20 +97,37 @@ export const INTERACTION_NOTE_CAP = 200;
 /** ADROIT.md, Ids and the registry: an id's namespace names its KIND and is LOOKED UP, never inferred
  *  from shape. These are the graph-level kinds; every other namespace is a capability or a domain
  *  declared in `domains.yaml`. */
-export const RESERVED_KINDS = ['principle', 'story', 'model', 'view'];
+export const RESERVED_KINDS = ['principle', 'story', 'view'];
+/** Kinds that once existed, each with what replaced it — an id in one is a hard error. */
+export const RETIRED_KINDS = {
+  model: 'models were retired for views — a typed view: record is the data vocabulary, and storage ' +
+    'lives in the migrations and Java models',
+};
+/** A view record's keys, in the order a file writes them. */
+export const VIEW_KEYS = ['id', 'decision', 'schema', 'rejected', 'links', 'context'];
+/** A view's `links:` keys: the views it consumes, the principles it grounds in. */
+export const VIEW_LINK_KEYS = ['consumes', 'grounds'];
+/** Keys of the retired model format, each with what replaced it — a hard error on a view record. */
+export const RETIRED_VIEW_KEYS = {
+  shape: 'a view carries a typed schema: — the legacy shape: block went with the models; storage lives in the migrations and Java models',
+  tables: 'storage is memorialized by the migrations and Java models, never listed in the ledger',
+  pending: 'a view states current truth only; a ruled-but-unbuilt shape lives in the decisions that reference the view',
+};
 export const DOMAINS_FILE = 'domains.yaml';
 /** The one key of `domains.yaml` that is not a domain: the corpus's stable name, which keys its
  *  machine-local interaction log. */
 export const CORPUS_KEY = 'corpus';
 
 /** The id rule (ADROIT.md, Ids and the registry): `<namespace>:<slug>`, the slug a few kebab-case words
- *  naming the decision's substance. */
+ *  naming the decision's substance. A project that renumbered may keep `tools/id-map.json` to translate retired numbered ids. */
 export const ID_SHAPE = /^[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const namespaceOf = (id) => (typeof id === 'string' && id.includes(':') ? id.slice(0, id.indexOf(':')) : null);
 export const kindOf = (id) => (RESERVED_KINDS.includes(namespaceOf(id)) ? namespaceOf(id) : 'decision');
 export const isPrinciple = (id) => namespaceOf(id) === 'principle';
-export const isModel = (id) => kindOf(id) === 'model' || kindOf(id) === 'view';
+export const isView = (id) => kindOf(id) === 'view';
+/** The retired kind an id is namespaced to, or null. */
+export const retiredKindOf = (id) => (Object.hasOwn(RETIRED_KINDS, namespaceOf(id) ?? '') ? namespaceOf(id) : null);
 
 export const truncate = (s, n = 110) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
@@ -127,7 +148,7 @@ const ACRONYMS = new Map(['ai', 'api', 'cors', 'csrf', 'csv', 'cta', 'db', 'hq',
   'llm', 'mcp', 'og', 'qr', 'sql', 'ui', 'url', 'utc', 'json', 'html', 'ssi', 'sms', 'pdf', 'dto']
   .map((w) => [w, w.toUpperCase()]).concat([['apis', 'APIs'], ['ids', 'IDs'], ['urls', 'URLs']]));
 
-/** A draft name from a decision id: `story:guest-checkout` → "Guest checkout". */
+/** A draft name from a decision id: `story:standalone-tools` → "Standalone tools". */
 export function draftName(id) {
   const words = String(id).slice(String(id).indexOf(':') + 1).split('-').filter(Boolean)
     .map((w) => ACRONYMS.get(w) ?? w);
@@ -140,8 +161,32 @@ export function draftName(id) {
 // The previous tree format, read for --diff against older refs
 // ---------------------------------------------------------------------------
 
-/** Is this parsed file in the previous format (a host record with optional `peers:`)? */
-export const isLegacyNode = (raw) => isMap(raw) && raw.decisions === undefined && typeof raw.id === 'string';
+/** Keys only the host-record format (before 2026-10-11) wrote — a file carrying one, and no `name`,
+ *  is read in that format. */
+const HOST_FORMAT_KEYS = ['peers', 'links', 'mounts', 'severs', 'severable'];
+
+/** Is this parsed file in the host-record format (a host record with optional `peers:`)? A file
+ *  with a `name` is never one: the host format had none. */
+export const isLegacyNode = (raw) => isMap(raw) && raw.decisions === undefined && typeof raw.id === 'string'
+  && raw.name === undefined && HOST_FORMAT_KEYS.some((k) => raw[k] !== undefined);
+
+/** Is this parsed file in the decision-list format of 2026-10-11 (`name` + `decisions:` list)? */
+export const isListNode = (raw) => isMap(raw) && Array.isArray(raw.decisions);
+
+/** The decision entries a parsed node file carries, whatever its format — `[{ id, decision,
+ *  rejected?, references? }]`, entries without a non-empty string id dropped (validate reports the
+ *  shape). */
+export function decisionsOf(raw) {
+  if (!isMap(raw)) return [];
+  const list = isLegacyNode(raw) ? legacyNode(raw).decisions
+    : isListNode(raw) ? raw.decisions
+      : [raw];
+  return list.filter((d) => isMap(d) && typeof d.id === 'string' && d.id).map((d) => ({
+    id: d.id, decision: d.decision,
+    ...(d.rejected !== undefined ? { rejected: d.rejected } : {}),
+    ...(d.references !== undefined ? { references: d.references } : {}),
+  }));
+}
 
 /** The contexts of a node's decisions merged into the node's one `context`: one source keeps its
  *  shape, several become a mapping keyed by decision id. Nothing is dropped. */
@@ -154,13 +199,12 @@ export function mergeContexts(sources) {
 }
 
 /** Adapt a previous-format file into a node: the host record and its peers become `decisions`
- *  (host first, peers in file order), `mounts` → `includes`, `severs` → `severed`, contexts merge,
- *  the name is drafted from the host id. `links` carry nothing forward. */
+ *  (host first, peers in file order), `mounts` → `includes`, contexts merge, the name is drafted
+ *  from the host id. `links`, `severable` and `severs` carry nothing forward. */
 export function legacyNode(raw) {
   const entry = (id, d) => {
     const out = { id, decision: d?.decision };
     if (Array.isArray(d?.rejected) && d.rejected.length) out.rejected = d.rejected;
-    if (d?.severable === true) out.severable = true;
     return out;
   };
   const peers = isMap(raw.peers) ? Object.entries(raw.peers).filter(([, p]) => isMap(p)) : [];
@@ -169,7 +213,6 @@ export function legacyNode(raw) {
     decisions: [entry(raw.id, raw), ...peers.map(([pid, p]) => entry(pid, p))],
   };
   if (isStrArray(raw.mounts) && raw.mounts.length) node.includes = raw.mounts;
-  if (isStrArray(raw.severs) && raw.severs.length) node.severed = raw.severs;
   const context = mergeContexts([[raw.id, raw.context], ...peers.map(([pid, p]) => [pid, p.context])]);
   if (context !== undefined) node.context = context;
   return node;
@@ -186,15 +229,15 @@ const CAPABILITY_ACCENTS = ['#8B8FA3', '#B45309', '#0D9488', '#9333EA', '#059669
 const PRODUCT_ACCENTS = ['#7C5CD6', '#B45309', '#0284C7', '#0D9488', '#64748B'];
 const TREE_PURPOSE = {
   engineering: 'How the project is built — read in full by every piece of work.',
-  models: 'The data at rest, and the flat read contracts (views) derived over it.',
+  models: 'The typed views — the DTO contracts that cross section and trust boundaries.',
 };
 
-/** A capability's root node's path — the node whose first decision states what an includer takes on. */
+/** A capability's root node's path — the node whose decisions state what an includer takes on. */
 const capabilityRootRel = (cap) => `capabilities/${cap}/${SELF}`;
 
-/** The trees, derived from the paths nodes and models live at. */
-function synthesizeTrees(nodes, models) {
-  const names = new Set([...nodes.map((n) => n.tree), ...models.map((m) => m._tree)]);
+/** The trees, derived from the paths nodes and views live at. */
+function synthesizeTrees(nodes, views) {
+  const names = new Set([...nodes.map((n) => n.tree), ...views.map((m) => m._tree)]);
   const sorted = [...names].sort();
   const nth = (t, prefix) => sorted.filter((x) => x.startsWith(prefix)).indexOf(t);
   return sorted.map((tree) => {
@@ -205,7 +248,8 @@ function synthesizeTrees(nodes, models) {
       accent: cap ? CAPABILITY_ACCENTS[nth(tree, 'capabilities/') % CAPABILITY_ACCENTS.length]
         : app ? PRODUCT_ACCENTS[nth(tree, 'product/') % PRODUCT_ACCENTS.length]
           : (TREE_ACCENT[tree] ?? null),
-      purpose: cap ? (nodes.find((n) => n.rel === capabilityRootRel(cap))?.raw?.decisions?.[0]?.decision ?? null)
+      purpose: cap ? (decisionsOf(nodes.find((n) => n.rel === capabilityRootRel(cap))?.raw).map((d) => d.decision)
+        .filter((x) => typeof x === 'string').join(' · ') || null)
         : app ? `The ${app} app.` : (TREE_PURPOSE[tree] ?? null),
     };
   });
@@ -228,32 +272,39 @@ function parentRelOf(rel, has) {
  *  git ref from `git cat-file` — so history and the working tree are parsed by one set of rules.
  *
  *  The store it returns:
- *    nodes       every node, in path order: { rel, file, tree, parent, name, ids, includes,
- *                severed, dubious, questions, context, raw, legacy }
+ *    nodes       every node, in path order: { rel, file, tree, parent, id, name, ids, includes,
+ *                dubious, questions, context, raw, legacy } — `id` its one decision, `ids` that
+ *                one id as a list (several only for a previous-format file)
  *    nodeByRel   rel → node
- *    records     one per decision ({ id, decision, rejected?, severable?, _file, _rel, _tree,
- *                _node, _nestedUnder }) plus one per model/view (its file, as written)
+ *    records     one per decision ({ id, decision, rejected?, references?, _file, _rel, _tree,
+ *                _node, _nestedUnder }) plus one per view (its file, as written)
  *    byId        id → record
- *    retiredFiles  ledger-relative paths of retired files (a capability contract), which fail the check */
+ *    retiredFiles  ledger-relative paths of retired files (a capability contract), which fail the check
+ *    unreadable    [{ rel, message }] — files the parser refused; each fails the check, and the rest of
+ *                  the store is still read and validated (ADROIT.md, The tools) */
 export function buildStore(entries) {
-  const files = [], models = [], retiredFiles = [];
+  const files = [], views = [], retiredFiles = [], unreadable = [];
   let domains = new Map(), domainsRaw;
+  const UNREADABLE = Symbol('unreadable');
   const parse = (entry) => {
     try {
       return parseYaml(entry.content);
     } catch (e) {
-      throw new Error(`${entry.path}: ${e.message}`);
+      unreadable.push({ rel: entry.rel, message: e.message });
+      return UNREADABLE;
     }
   };
   for (const entry of [...entries].sort((a, b) => a.path.localeCompare(b.path))) {
-    if (entry.kind === 'node') files.push({ entry, raw: parse(entry) });
-    else if (entry.kind === 'model') {
+    if (entry.kind === 'node') { const raw = parse(entry); if (raw !== UNREADABLE) files.push({ entry, raw }); }
+    else if (entry.kind === 'view') {
       const raw = parse(entry);
-      models.push({ ...(isMap(raw) ? raw : {}), _file: entry.path, _rel: entry.rel, _tree: 'models' });
+      if (raw === UNREADABLE) continue;
+      views.push({ ...(isMap(raw) ? raw : {}), _file: entry.path, _rel: entry.rel, _tree: 'models' });
     } else if (entry.kind === 'retired') {
       retiredFiles.push(entry.rel);
     } else if (entry.kind === 'domains') {
       domainsRaw = parse(entry);
+      if (domainsRaw === UNREADABLE) domainsRaw = undefined;
       if (isMap(domainsRaw)) domains = new Map(Object.entries(domainsRaw).filter(([k]) => k !== CORPUS_KEY));
     }
   }
@@ -261,37 +312,36 @@ export function buildStore(entries) {
   const rels = new Set(files.map((f) => f.entry.rel));
   const nodes = [], records = [];
   for (const { entry, raw } of files) {
-    const legacy = isLegacyNode(raw);
-    const body = legacy ? legacyNode(raw) : (isMap(raw) ? raw : {});
+    // A previous-format file (decision list, or host record + peers) is read so --diff can compare
+    // across the format changes; `legacy` marks it, and the check fails it in the working tree.
+    const legacy = isLegacyNode(raw) || isListNode(raw);
+    const body = isLegacyNode(raw) ? legacyNode(raw) : (isMap(raw) ? raw : {});
     const node = {
       rel: entry.rel, file: entry.path, tree: treeOfPath(entry.rel),
       parent: parentRelOf(entry.rel, (r) => rels.has(r)),
       name: body.name,
       ids: [],
       includes: isStrArray(body.includes) ? body.includes : [],
-      severed: isStrArray(body.severed) ? body.severed : [],
       dubious: body.dubious, questions: body.questions, context: body.context,
       raw, legacy,
     };
-    for (const d of Array.isArray(body.decisions) ? body.decisions : []) {
-      if (!isMap(d) || typeof d.id !== 'string') continue;   // validate reports the shape
+    for (const d of decisionsOf(raw)) {
       node.ids.push(d.id);
       records.push({
-        id: d.id, decision: d.decision,
-        ...(d.rejected !== undefined ? { rejected: d.rejected } : {}),
-        ...(d.severable !== undefined ? { severable: d.severable } : {}),
+        ...d,
         _file: entry.path, _rel: `${entry.rel}#${d.id}`, _tree: node.tree, _node: node.rel,
         ...(node.parent ? { _nestedUnder: node.parent } : {}),
       });
     }
+    node.id = node.ids[0];
     nodes.push(node);
   }
   // Parents before children, a directory's own node before its contents.
   const order = (rel) => rel.replace(/(^|\/)self\.yaml$/, '/');
   nodes.sort((a, b) => order(a.rel).localeCompare(order(b.rel)));
-  records.push(...models);
+  records.push(...views);
 
-  const trees = synthesizeTrees(nodes, models);
+  const trees = synthesizeTrees(nodes, views);
   return {
     // The interaction events are not part of the store (ADROIT.md, The interactions log); loadLedger
     // attaches the machine-local log's valid events here, so every consumer reads one array.
@@ -299,7 +349,7 @@ export function buildStore(entries) {
     records, byId: new Map(records.map((r) => [r.id, r])),
     trees, treeByName: new Map(trees.map((t) => [t.tree, t])),
     capabilities: new Set(trees.filter((t) => t.kind === 'capability').map((t) => t.name)),
-    retiredFiles, domains, domainsRaw, interactions: [],
+    retiredFiles, unreadable, domains, domainsRaw, interactions: [],
   };
 }
 
@@ -311,7 +361,7 @@ export function entryKind(relPath, dir = 'ledger') {
   if (rel === DOMAINS_FILE) return 'domains';
   const parts = rel.split('/');
   if (parts[parts.length - 1] === RETIRED_CONTRACT) return 'retired';
-  if (parts[0] === 'models') return parts.length === 2 ? 'model' : null;
+  if (parts[0] === 'models') return parts.length === 2 ? 'view' : null;
   return NODE_ROOTS.includes(parts[0]) ? 'node' : null;
 }
 
@@ -486,13 +536,12 @@ export function openGaps({ interactions = [], byId = new Map() } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// The model layer
+// The views
 // ---------------------------------------------------------------------------
 
-/** ADROIT.md, Models — the ids a shape field cites in parens are LINKS: each field
+/** The ids a schema field cites in parens are LINKS: each field
  *  points at the decisions it realizes. `edges` resolve, `dangling` do not (a check error), and
- *  `unlinked` are deployed fields citing nothing — the probable-orphan signal, a report only.
- *  Pending entries are scanned for dangling citations only. */
+ *  `unlinked` are fields citing nothing — the probable-orphan signal, a report only. */
 export function shapeIndex({ records = [], byId = new Map() } = {}) {
   const CITE_GROUP = /\(([^)]*)\)/g;
   const CITE_ID = /[a-z][a-z0-9-]*:[a-z][a-z0-9-]*/g;
@@ -504,27 +553,126 @@ export function shapeIndex({ records = [], byId = new Map() } = {}) {
   };
   const edges = [], unlinked = [], dangling = [];
   for (const rec of records) {
-    if (!isMap(rec.shape)) continue;
-    for (const [section, orphanable] of [['fields', true], ['pending', false]]) {
-      const entries = rec.shape[section];
-      if (!isMap(entries)) continue;
-      for (const [field, raw] of Object.entries(entries)) {
-        if (typeof raw !== 'string') continue;
-        const cited = citesOf(raw);
-        for (const ruling of cited) (byId.has(ruling) ? edges : dangling).push({ model: rec.id, field, ruling, section });
-        if (orphanable && !cited.size) unlinked.push({ model: rec.id, field });
-      }
+    const fields = rec._tree === 'models' && isMap(rec.schema?.fields) ? rec.schema.fields : null;
+    if (!fields) continue;
+    for (const [field, raw] of Object.entries(fields)) {
+      if (typeof raw !== 'string') continue;
+      const cited = citesOf(raw);
+      for (const ruling of cited) (byId.has(ruling) ? edges : dangling).push({ model: rec.id, field, ruling, section: 'fields' });
+      if (!cited.size) unlinked.push({ model: rec.id, field });
     }
   }
   return { edges, unlinked, dangling };
 }
 
-/** The model layer's wiring: the models and views, and which decision trees each REALIZES — read
- *  off its field citations (model → decision; no decision points at a model). */
-export function modelIndex({ records = [], byId = new Map() } = {}) {
-  const models = records.filter((r) => isModel(r.id) && r._tree === 'models');
+/** THE TYPED SCHEMA (user-directed 2026-10-13: the ledger's typed data vocabulary is VIEWS ONLY —
+ *  the DTOs that move through the system, never table schemas). Every record in models/ is a view
+ *  carrying `schema:`; it holds `fields` only — no `tables` (storage lives in migrations + Java)
+ *  and no `pending` (a view states current truth; ruled-but-unbuilt shapes live in the decisions
+ *  that reference it). A field reads
+ *    field: <type> [(id, id)] [— meaning]
+ *  and the type is CLOSED vocabulary:
+ *    string | text | int | long | double | bool | epoch | date | json
+ *    enum<a|b|c> | ref<view:slug> | derived<type> | list<type> | map<key,type>
+ *  The parenthesised ids are the links shapeIndex reads; the meaning is prose. */
+export const SCHEMA_SCALARS = ['string', 'text', 'int', 'long', 'double', 'bool', 'epoch', 'date', 'json'];
+const SCHEMA_ENUM_VALUE = /^[A-Za-z0-9_-]+$/;
+const SCHEMA_REF = /^view:[a-z][a-z0-9-]*$/;
+
+/** Parse one type token → { type, refs } or { error }. `refs` are the ids its ref<…>s name. */
+export function parseSchemaType(token) {
+  const t = String(token ?? '');
+  if (SCHEMA_SCALARS.includes(t)) return { type: t, refs: [] };
+  let m = /^enum<(.*)>$/.exec(t);
+  if (m) {
+    const values = m[1].split('|');
+    if (!values.every((v) => SCHEMA_ENUM_VALUE.test(v))) return { error: `enum<…> takes |-separated values, got '${t}'` };
+    if (new Set(values).size !== values.length) return { error: `enum<…> names a value twice in '${t}'` };
+    return { type: t, refs: [] };
+  }
+  m = /^ref<(.*)>$/.exec(t);
+  if (m) {
+    if (SCHEMA_REF.test(m[1])) return { type: t, refs: [m[1]] };
+    return { error: retiredKindOf(m[1])
+      ? `ref<…> names '${m[1]}' — ${RETIRED_KINDS[retiredKindOf(m[1])]}; ref a view, or write the bare id as a scalar`
+      : `ref<…> takes one view: id, got '${t}'` };
+  }
+  m = /^(derived|list)<(.*)>$/.exec(t);
+  if (m) {
+    const inner = parseSchemaType(m[2]);
+    return inner.error ? inner : { type: t, refs: inner.refs };
+  }
+  m = /^map<(.*)>$/.exec(t);
+  if (m) {
+    let depth = 0, cut = -1;
+    for (let i = 0; i < m[1].length; i++) {
+      const c = m[1][i];
+      if (c === '<') depth++;
+      else if (c === '>') depth--;
+      else if (c === ',' && depth === 0) { cut = i; break; }
+    }
+    if (cut < 0) return { error: `map<key,type> takes a key and a value type (no space, the type is one token), got '${t}'` };
+    const key = m[1].slice(0, cut).trim();
+    if (!['string', 'int', 'long'].includes(key)) return { error: `map<…> keys are string, int or long, got '${key}'` };
+    const inner = parseSchemaType(m[1].slice(cut + 1).trim());
+    return inner.error ? inner : { type: t, refs: inner.refs };
+  }
+  return { error: `'${t}' is not a schema type — use ${SCHEMA_SCALARS.join(' | ')} | enum<a|b> | ref<view:slug> | derived<type> | list<type> | map<key,type>` };
+}
+
+/** Parse one typed field value → { type, refs, meaning } or { error }. The type is the leading
+ *  token (it holds no spaces); what follows is an optional parenthesised citation group and an
+ *  optional `— meaning`. */
+export function parseSchemaField(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return { error: 'a schema field must be a non-empty string' };
+  const m = /^(\S+)(?:\s+\(([^)]*)\))?(?:\s+—\s+([\s\S]*))?$/.exec(raw.trim());
+  if (!m) return { error: `must read '<type> [(ids)] [— meaning]', got '${raw.length > 60 ? `${raw.slice(0, 60)}…` : raw}'` };
+  const t = parseSchemaType(m[1]);
+  return t.error ? t : { ...t, meaning: m[3] ?? '' };
+}
+
+/** Every way a view record's typed `schema:` block is malformed or missing — [{ field, message }]. */
+export function schemaFindings(rec, byId = new Map()) {
+  if (rec?.schema === undefined) {
+    return [{ field: 'schema', message: 'a view carries a typed schema: — its DTO contract, fields only' }];
+  }
+  const out = [];
+  if (!isMap(rec.schema)) return [{ field: 'schema', message: 'schema must be a mapping' }];
+  for (const k of Object.keys(rec.schema)) {
+    if (k !== 'fields') {
+      out.push({ field: k, message: k === 'tables'
+        ? 'a typed schema lists no tables — storage is memorialized by the migrations and Java models'
+        : k === 'pending'
+          ? 'a typed schema has no pending — a view states current truth only; a ruled-but-unbuilt shape lives in the decisions that reference the view'
+          : `'${k}' is not a schema key — schema holds fields only` });
+    }
+  }
+  if (!isMap(rec.schema.fields) || !Object.keys(rec.schema.fields).length) {
+    return [...out, { field: 'fields', message: 'schema.fields must be a non-empty mapping of field → typed value' }];
+  }
+  for (const [field, raw] of Object.entries(rec.schema.fields)) {
+    const f = parseSchemaField(raw);
+    if (f.error) { out.push({ field, message: f.error }); continue; }
+    for (const r of f.refs) {
+      if (!(byId.get(r)?._tree === 'models')) out.push({ field, message: `${f.type} names '${r}', which is no view record` });
+    }
+  }
+  return out;
+}
+
+/** Every view record's typed fields, as [{ name, type, refs, cites }] — what the ERD draws. */
+export const schemaFieldsOf = (rec) => (isMap(rec?.schema?.fields) ? Object.entries(rec.schema.fields) : [])
+  .map(([name, raw]) => {
+    const f = parseSchemaField(raw);
+    return f.error ? { name, type: '?', refs: [] } : { name, type: f.type, refs: f.refs };
+  });
+
+/** The view layer's wiring: the views, and which decision trees each REALIZES — read off its field
+ *  citations (view → decision; a decision reaches a view only through its references). */
+export function viewIndex({ records = [], byId = new Map() } = {}) {
+  const views = records.filter((r) => isView(r.id) && r._tree === 'models');
   const refs = [], seen = new Set();
-  for (const e of shapeIndex({ records: models, byId }).edges) {
+  for (const e of shapeIndex({ records: views, byId }).edges) {
     const from = byId.get(e.ruling)?._tree;
     if (!from || from === 'models') continue;
     const key = `${from} ${e.model} ${e.ruling}`;
@@ -533,26 +681,20 @@ export function modelIndex({ records = [], byId = new Map() } = {}) {
     refs.push({ from, model: e.model, via: e.ruling });
   }
   const realizersOf = (id) => [...new Set(refs.filter((r) => r.model === id).map((r) => r.from))].sort();
-  return { models, refs, realizersOf };
+  return { views, refs, realizersOf };
 }
 
-/** A model's own links to other models (the models directory keeps its own format), as
- *  [type, target]. Only the ERD reads these. */
-export const modelEdges = (rec) => [
+/** A view's own links (`links:` — the views it consumes, the principles it grounds in), as
+ *  [type, target]. */
+export const viewLinks = (rec) => [
   ...[].concat(rec.links?.grounds ?? []).map((t) => ['grounds', t]),
   ...[].concat(rec.links?.consumes ?? []).map((t) => ['consumes', t]),
 ].filter(([, t]) => typeof t === 'string');
 
-/** The tables a model stands for — read from its own `tables:`, else `context.tables`. A view
- *  maps to no tables by construction. */
-export const tablesOf = (rec) =>
-  [].concat(rec?.tables ?? rec?.context?.tables ?? [])
-    .filter((t) => typeof t === 'string' && t.trim());
-
-/** The derivations a view DECLARES: its shape fields of kind `derived`; for a record with no shape
- *  block, the capitalised names introduced with an em dash in its statement. */
+/** The derivations a view DECLARES: its schema fields of type `derived<…>`; for a record with no
+ *  schema, the capitalised names introduced with an em dash in its statement. */
 export const declaredDerivations = (rec) => {
-  const fields = rec?.shape?.fields;
+  const fields = rec?.schema?.fields;
   if (isMap(fields)) {
     return Object.entries(fields).filter(([, v]) => typeof v === 'string' && /^derived\b/.test(v)).map(([k]) => k);
   }
@@ -560,22 +702,19 @@ export const declaredDerivations = (rec) => {
 };
 
 // ---------------------------------------------------------------------------
-// Nodes: ancestry, includes and severs
+// Nodes: ancestry and includes
 // ---------------------------------------------------------------------------
 
-/** NODES, INCLUDES AND SEVERS (user-ruled 2026-10-11). Every decision of a node binds everything
- *  nested beneath the node and nothing else. `includes: [x]` brings the whole `capabilities/x`
+/** NODES AND INCLUDES (user-ruled 2026-10-11; one decision per node 2026-10-14). A node's
+ *  ancestors are the `self.yaml` of each enclosing directory. `includes: [x]` brings the whole `capabilities/x`
  *  tree into the scope of the node and every descendant — and whatever that tree's own nodes
- *  include, transitively. `severed: [id]` releases the node and its descendants from a decision
- *  marked `severable: true`, which must be a decision of an ancestor node or of a node inside a
- *  capability in this node's scope. Helpers:
+ *  include, transitively. Helpers:
  *    ancestorsOf(node)          ancestor nodes, root first
- *    severedFor(node)           ids severed by the node or any ancestor
  *    includedFor(node)          capability names the node or an ancestor includes
  *    capabilityClosure(names)   those names plus everything their trees include, transitively
  *    nodesOfCapability(name)    the capability's nodes, in path order */
 export function nodeIndex(store) {
-  const { nodes = [], nodeByRel = new Map(), byId = new Map() } = store;
+  const { nodes = [], nodeByRel = new Map() } = store;
   const nodeOf = (x) => (typeof x === 'string' ? nodeByRel.get(x) : x);
   const ancestorsOf = (n) => {
     const chain = [];
@@ -587,7 +726,6 @@ export function nodeIndex(store) {
     return chain;
   };
   const lineage = (n) => [...ancestorsOf(n), nodeOf(n)].filter(Boolean);
-  const severedFor = (n) => new Set(lineage(n).flatMap((x) => x.severed));
   const includedFor = (n) => new Set(lineage(n).flatMap((x) => x.includes));
   const nodesOfCapability = (name) => nodes.filter((x) => x.tree === `capabilities/${name}`);
   const capabilityClosure = (names) => {
@@ -601,30 +739,17 @@ export function nodeIndex(store) {
     return out;
   };
 
-  const problems = [];
-  for (const n of nodes) {
-    if (!n.severed.length) continue;
-    const ancestral = new Set(ancestorsOf(n).flatMap((a) => a.ids));
-    const included = new Set([...capabilityClosure(includedFor(n))].flatMap((c) => nodesOfCapability(c).flatMap((x) => x.ids)));
-    for (const id of n.severed) {
-      const target = byId.get(id);
-      const say = (message) => problems.push({ id: n.rel, rule: 'severed', message: `severs '${id}', ${message}` });
-      if (!target || !target._node) say('which names no decision');
-      else if (!ancestral.has(id) && !included.has(id)) {
-        say('which is neither a decision of an ancestor node nor of a capability this node includes — a decision binds only its own subtree');
-      } else if (target.severable !== true) say('which is not marked severable — it binds every descendant');
-    }
-  }
-  return { nodeOf, ancestorsOf, severedFor, includedFor, capabilityClosure, nodesOfCapability, problems };
+  return { nodeOf, ancestorsOf, includedFor, capabilityClosure, nodesOfCapability };
 }
 
 // ---------------------------------------------------------------------------
 // Text rules
 // ---------------------------------------------------------------------------
 
-/** Every model: or view: id a node names in its decisions (text and rejected) or its context. A
- *  decision never points at the models directory (ADROIT.md, Models): the model cites the
- *  decision. `dubious` and `questions` are maintenance notes and never a check fault. */
+/** Every view: id — or retired model: id — a node names in its decision (text and rejected) or
+ *  its context. Decision TEXT never points at the models directory: the
+ *  channels are a `{slug.field}` token and the `references:` key. `dubious` and `questions` are
+ *  maintenance notes and never a check fault. */
 export function modelIdsInText(value) {
   const out = new Set();
   const walk = (v) => {
@@ -639,21 +764,41 @@ export function modelIdsInText(value) {
 /** NO IDS IN DECISION TEXT (user-directed 2026-10-10). A decision's text states the rule; its
  *  relationships are structural — the parent is the directory, a capability is an include. So the
  *  `decision` field names no record id. `rejected` and `context` are history and may keep theirs.
- *  A token counts only when it RESOLVES to a live id. model:/view: ids are left to modelIdsInText.
- *  Flip the constant to make the findings warnings instead of errors. */
+ *  A token counts only when it RESOLVES: a live id, or a retired numbered id id-map.json
+ *  translates. view: (and retired model:) ids are left to modelIdsInText. Flip the constant to make the findings
+ *  warnings instead of errors. */
 export const IDS_IN_DECISION_TEXT_FAIL = true;
 
-const TEXT_ID_TOKEN = /(?<![A-Za-z0-9_:-])[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*/g;
+let retiredIdsCache;
+/** The retired numbered ids (`AUD-D14`, `email:D8`) id-map.json still translates. */
+export function retiredIds() {
+  if (!retiredIdsCache) {
+    try {
+      retiredIdsCache = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'id-map.json'), 'utf8'))));
+    } catch {
+      retiredIdsCache = new Set();
+    }
+  }
+  return retiredIdsCache;
+}
 
-/** Every record id named in a decision's text — [{ where, token }]. Models are out of scope. */
-export function idsInDecisionText(rec, byId = new Map()) {
+const TEXT_ID_TOKEN = /(?<![A-Za-z0-9_:-])[a-z][a-z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*/g;
+const RETIRED_ID_TOKEN = /(?<![A-Za-z0-9_:-])(?:[A-Z]+-D\d+|[a-z]+:D\d+)(?![A-Za-z0-9])/g;
+
+/** Every record id named in a decision's text — [{ where, token }]. Views are out of scope. */
+export function idsInDecisionText(rec, byId = new Map(), retired = retiredIds()) {
   if (!rec?._node || typeof rec.decision !== 'string') return [];
   const out = [], seen = new Set();
   for (const m of rec.decision.matchAll(TEXT_ID_TOKEN)) {
     const token = m[0];
-    if (seen.has(token) || !byId.has(token) || isModel(token)) continue;
+    if (seen.has(token) || !byId.has(token) || isView(token) || retiredKindOf(token)) continue;
     seen.add(token);
     out.push({ where: 'decision', token });
+  }
+  for (const m of rec.decision.matchAll(RETIRED_ID_TOKEN)) {
+    if (seen.has(m[0]) || !retired.has(m[0])) continue;
+    seen.add(m[0]);
+    out.push({ where: 'decision', token: m[0] });
   }
   return out;
 }
@@ -661,6 +806,56 @@ export function idsInDecisionText(rec, byId = new Map()) {
 /** The store-wide findings — the ONE walk validate, warn and the --check summary read. */
 export function idsInDecisionTextFindings({ records = [], byId = new Map() } = {}) {
   return records.flatMap((rec) => idsInDecisionText(rec, byId).map((f) => ({ id: rec.id, ...f })));
+}
+
+/** FIELD TOKENS (user-directed 2026-10-13). A decision's prose may name a typed view's field inline
+ *  as `{<slug>.<field>}` — in its `decision` or `rejected` text, never its context. `<slug>`
+ *  resolves to the record `view:<slug>`, which must carry a typed `schema:`; `<field>` must be one
+ *  of that schema's fields. Any `{…}` is a token: one that does not read `slug.field` (one dot,
+ *  both parts non-empty, no spaces) is malformed, never passed over. Each token implies the
+ *  decision references its view — see effectiveReferences. */
+const FIELD_TOKEN = /\{([^{}]*)\}/g;
+const FIELD_TOKEN_SHAPE = /^([a-z][a-z0-9-]*)\.([^\s.{}]+)$/;
+
+/** Every `{…}` in one text → [{ raw, slug?, field?, view? }]; slug/field/view only when well-formed. */
+export function fieldTokens(text) {
+  if (typeof text !== 'string') return [];
+  return [...text.matchAll(FIELD_TOKEN)].map((m) => {
+    const s = FIELD_TOKEN_SHAPE.exec(m[1]);
+    return s ? { raw: m[0], slug: s[1], field: s[2], view: `view:${s[1]}` } : { raw: m[0] };
+  });
+}
+
+/** The decision texts a token may sit in, as [where, text]. */
+const tokenTexts = (rec) => [
+  ['decision', rec?.decision],
+  ...(Array.isArray(rec?.rejected) ? rec.rejected.map((t, i) => [`rejected[${i}]`, t]) : []),
+];
+
+/** Every way a decision's field tokens fail to resolve — [{ where, token, message }]. */
+export function tokenFindings(rec, byId = new Map()) {
+  if (!rec?._node) return [];
+  const out = [];
+  for (const [where, text] of tokenTexts(rec)) {
+    for (const t of fieldTokens(text)) {
+      if (!t.slug) { out.push({ where, token: t.raw, message: `'${t.raw}' is not a field token — write {<view-slug>.<field>}` }); continue; }
+      const view = byId.get(t.view);
+      const fields = view?._tree === 'models' && isMap(view.schema?.fields) ? view.schema.fields : null;
+      if (!fields) out.push({ where, token: t.raw, message: `'${t.raw}' names ${t.view}, which is no typed view` });
+      else if (!Object.hasOwn(fields, t.field)) {
+        out.push({ where, token: t.raw, message: `'${t.raw}': ${t.view} has no field '${t.field}' — its fields are ${Object.keys(fields).join(', ')}` });
+      }
+    }
+  }
+  return out;
+}
+
+/** A decision's EFFECTIVE references: its explicit `references:` plus the view each well-formed
+ *  field token names, in that order, deduplicated. */
+export function effectiveReferences(rec) {
+  const explicit = isStrArray(rec?.references) ? rec.references : [];
+  const derived = tokenTexts(rec).flatMap(([, text]) => fieldTokens(text).filter((t) => t.view).map((t) => t.view));
+  return [...new Set([...explicit, ...derived])];
 }
 
 const idsInTextMessage = (f) => `${f.where} names '${f.token}' — decision text carries no record ids; ` +
@@ -746,16 +941,18 @@ export function capabilityCycles(edges) {
  *  is at fault, else the ledger-relative path. */
 export function validate(store) {
   const { records = [], byId = new Map(), nodes = [], nodeByRel = new Map(), domains = new Map(),
-    domainsRaw, strayRoots = [], retiredFiles = [], capabilities = new Set() } = store;
+    domainsRaw, strayRoots = [], retiredFiles = [], unreadable = [], capabilities = new Set() } = store;
   const errors = [];
   const bad = (id, rule, message) => errors.push({ id, rule, message });
 
   for (const name of strayRoots) {
-    bad(`${name}/`, 'root', `is not a ledger root — records live under ${TREE_ROOTS.join(', ')}` +
+    bad(`${name}/`, 'root', `is not a ledger root — records live under ${TREE_ROOTS.join(', ')}; ` +
+      `adroit's own corpus lives upstream` +
       (name === RETIRED_INTERACTIONS_DIR
         ? `; interaction events are machine-local telemetry, appended to ${interactionLogPath('<corpus>')} (ADROIT.md, The interactions log)`
         : ''));
   }
+  for (const u of unreadable) bad(u.rel, 'unreadable', `could not be parsed — ${u.message}`);
 
   // --- the domain declaration (domains.yaml) --------------------------------
   // A namespace must name a capability tree, a reserved kind, or a declared domain.
@@ -770,6 +967,7 @@ export function validate(store) {
     if (!/^[a-z][a-z0-9-]*$/.test(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is not a lowercase namespace`);
     if (typeof purpose !== 'string' || !purpose.trim()) bad(DOMAINS_FILE, 'domains', `'${name}' names no purpose`);
     if (RESERVED_KINDS.includes(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is a reserved kind, not a domain`);
+    if (Object.hasOwn(RETIRED_KINDS, name)) bad(DOMAINS_FILE, 'domains', `'${name}' is a retired kind, not a domain — ${RETIRED_KINDS[name]}`);
     if (capabilities.has(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is a capability tree — its namespace already means that`);
     if (!inUse.has(name)) bad(DOMAINS_FILE, 'domains', `'${name}' is declared but no record uses it`);
   }
@@ -785,20 +983,21 @@ export function validate(store) {
       else bad(at, 'unknown-key', `'${k}' is not a node key — a node holds only ${NODE_KEYS.join(', ')}`);
     }
     if (n.legacy) continue;  // the retired keys above are the whole story for an old-format file
-    if (!oneLine(raw.name)) bad(at, 'shape', 'name must be a non-empty, one-line string');
-    if (!Array.isArray(raw.decisions) || !raw.decisions.length) {
-      bad(at, 'shape', 'decisions must be a non-empty list');
-    } else {
-      raw.decisions.forEach((d, i) => {
-        const where = typeof d?.id === 'string' ? d.id : `${at} decisions[${i}]`;
-        if (!isMap(d)) { bad(where, 'shape', 'a decision entry must be a mapping'); return; }
-        const extra = Object.keys(d).filter((k) => !DECISION_KEYS.includes(k));
-        if (extra.length) bad(where, 'unknown-key', `carries [${extra.join(', ')}] — a decision holds only ${DECISION_KEYS.join(', ')}`);
-        if (typeof d.id !== 'string' || !d.id) bad(where, 'shape', 'id must be a non-empty string');
-        if (typeof d.decision !== 'string' || !d.decision.trim()) bad(where, 'shape', 'decision must be a non-empty string');
-        if (d.rejected !== undefined && !isStrArray(d.rejected)) bad(where, 'shape', 'rejected must be a list of strings');
-        if (d.severable !== undefined && typeof d.severable !== 'boolean') bad(where, 'shape', 'severable must be true or false');
-      });
+    // ONE decision per file: id, name and decision at the top level.
+    const where = typeof raw.id === 'string' && raw.id ? raw.id : at;
+    if (typeof raw.id !== 'string' || !raw.id) bad(at, 'shape', 'id must be a non-empty string — a node file holds one decision');
+    if (!oneLine(raw.name)) bad(where, 'shape', 'name must be a non-empty, one-line string');
+    if (typeof raw.decision !== 'string' || !raw.decision.trim()) bad(where, 'shape', 'decision must be a non-empty string');
+    if (raw.rejected !== undefined && !isStrArray(raw.rejected)) bad(where, 'shape', 'rejected must be a list of strings');
+    if (raw.references !== undefined) {
+      if (!isStrArray(raw.references) || !raw.references.length) bad(where, 'references', 'references must be a non-empty list of view ids');
+      else {
+        if (new Set(raw.references).size !== raw.references.length) bad(where, 'references', 'references names a record twice');
+        for (const r of raw.references) {
+          if (retiredKindOf(r)) bad(where, 'references', `'${r}' — ${RETIRED_KINDS[retiredKindOf(r)]}; reference the view that carries it`);
+          else if (!(isView(r) && byId.get(r)?._tree === 'models')) bad(where, 'references', `'${r}' resolves to no view record`);
+        }
+      }
     }
     if (raw.includes !== undefined) {
       if (!isStrArray(raw.includes)) bad(at, 'includes', 'includes must be a list of capability names');
@@ -808,13 +1007,14 @@ export function validate(store) {
         for (const c of raw.includes) if (n.tree === `capabilities/${c}`) bad(at, 'includes', `includes '${c}', the capability it lives in`);
       }
     }
-    if (raw.severed !== undefined && !isStrArray(raw.severed)) bad(at, 'severed', 'severed must be a list of decision ids');
     if (raw.dubious !== undefined && !oneLine(raw.dubious)) bad(at, 'dubious', 'dubious must be one non-empty line saying why');
     if (raw.questions !== undefined && !(Array.isArray(raw.questions) && raw.questions.length && raw.questions.every(oneLine))) {
       bad(at, 'questions', 'questions must be a list of non-empty, one-line strings');
     }
+    if (raw.context !== undefined && !(typeof raw.context === 'string' && raw.context.trim())) {
+      bad(at, 'context', 'context must be one free-form text, with no sub-keys');
+    }
   }
-  for (const p of nodeIndex(store).problems) bad(p.id, p.rule, p.message);
 
   // --- ids ------------------------------------------------------------------------
   const seenIds = new Map();
@@ -825,6 +1025,10 @@ export function validate(store) {
     else seenIds.set(rec.id, at);
     if (!ID_SHAPE.test(rec.id)) bad(rec.id, 'id-shape', `must be <namespace>:<kebab-case-slug> naming the decision's substance`);
     const ns = namespaceOf(rec.id);
+    if (retiredKindOf(rec.id)) {
+      bad(rec.id, 'retired-kind', `'${ns}:' is retired — ${RETIRED_KINDS[ns]}`);
+      continue;
+    }
     if (ns && !RESERVED_KINDS.includes(ns) && !namespaces.has(ns)) {
       bad(rec.id, 'namespace', `namespace '${ns}:' is neither a capability tree, a reserved kind ` +
         `(${RESERVED_KINDS.join(', ')}), nor a domain declared in ${DOMAINS_FILE} — declare it before using it`);
@@ -832,31 +1036,56 @@ export function validate(store) {
     if (ns && capabilities.has(ns) && rec._tree !== `capabilities/${ns}`) {
       bad(rec.id, 'namespace', `is namespaced to the '${ns}' capability but lives in ${rec._tree}`);
     }
-    if (isModel(rec.id) !== (rec._tree === 'models')) {
-      bad(rec.id, 'models', isModel(rec.id) ? `a ${kindOf(rec.id)} lives in the models directory, not ${rec._tree}`
-        : 'the models directory holds only model: and view: records');
+    if (isView(rec.id) !== (rec._tree === 'models')) {
+      bad(rec.id, 'models', isView(rec.id) ? `a view lives in the models directory, not ${rec._tree}`
+        : 'the models directory holds only view: records');
     }
   }
 
-  // --- the models directory: its own format -----------------------------------------
+  // --- the models directory: one typed view per file -------------------------------
   for (const rec of records.filter((r) => r._tree === 'models')) {
-    if (typeof rec.decision !== 'string' || !rec.decision.trim()) bad(rec.id ?? rec._rel, 'shape', 'decision must be a non-empty string');
-    for (const [type, t] of modelEdges(rec)) {
-      if (!byId.has(t) && !isPrinciple(t)) bad(rec.id, 'dangling', `${type} '${t}' names no record`);
+    const at = rec.id ?? rec._rel;
+    for (const k of Object.keys(rec).filter((x) => !x.startsWith('_'))) {
+      if (VIEW_KEYS.includes(k)) continue;
+      if (RETIRED_VIEW_KEYS[k]) bad(at, 'retired-key', `'${k}' is retired — ${RETIRED_VIEW_KEYS[k]}`);
+      else bad(at, 'unknown-key', `'${k}' is not a view key — a view holds only ${VIEW_KEYS.join(', ')}`);
+    }
+    if (typeof rec.decision !== 'string' || !rec.decision.trim()) bad(at, 'shape', 'decision must be a non-empty string');
+    if (rec.rejected !== undefined && !isStrArray(rec.rejected)) bad(at, 'shape', 'rejected must be a list of strings');
+    if (rec.links !== undefined) {
+      if (!isMap(rec.links)) bad(at, 'shape', 'links must be a mapping of consumes / grounds');
+      else {
+        for (const k of Object.keys(rec.links).filter((x) => !VIEW_LINK_KEYS.includes(x))) {
+          bad(at, 'unknown-key', `links.${k} is not a link — a view's links are ${VIEW_LINK_KEYS.join(', ')}`);
+        }
+      }
+    }
+    for (const [type, t] of viewLinks(rec)) {
+      if (type === 'consumes' && !(isView(t) && byId.get(t)?._tree === 'models')) {
+        bad(at, 'dangling', `consumes '${t}', which is no view record — a view consumes other views; ` +
+          `storage lives in the migrations and Java models`);
+      } else if (type === 'grounds' && !byId.has(t) && !isPrinciple(t)) {
+        bad(at, 'dangling', `grounds '${t}' names no record`);
+      }
     }
   }
+  for (const rec of records.filter((r) => r._tree === 'models')) {
+    for (const f of schemaFindings(rec, byId)) bad(rec.id ?? rec._rel, 'schema-type', `schema.${f.field}: ${f.message}`);
+  }
   for (const d of shapeIndex(store).dangling) {
-    bad(d.model, 'shape-citation', `${d.section}.${d.field} cites '${d.ruling}', which resolves to no record`);
+    bad(d.model, 'shape-citation', `schema.${d.field} cites '${d.ruling}', which resolves to no record`);
   }
 
   // --- what decision text may say ---------------------------------------------------
   for (const n of nodes) {
     if (n.legacy || !isMap(n.raw)) continue;
-    const said = Array.isArray(n.raw.decisions) ? n.raw.decisions.map((x) => [x?.decision, x?.rejected]) : [];
-    for (const id of modelIdsInText([said, n.raw.context])) {
-      bad(n.rel, 'model-in-decision', `names '${id}' — a decision never points at the models directory; ` +
-        `state the business rule, and let the model's fields cite the decision`);
+    for (const id of modelIdsInText([n.raw.decision, n.raw.rejected, n.raw.context])) {
+      bad(n.rel, 'model-in-decision', `names '${id}' — decision text never names a view id; ` +
+        `name a field as a {slug.field} token, or list the view in the decision's references:`);
     }
+  }
+  for (const rec of records) {
+    for (const f of tokenFindings(rec, byId)) bad(rec.id, 'token', `${f.where}: ${f.message}`);
   }
   if (IDS_IN_DECISION_TEXT_FAIL) {
     for (const f of idsInDecisionTextFindings(store)) bad(f.id, 'id-in-decision-text', idsInTextMessage(f));
@@ -881,7 +1110,7 @@ export function validate(store) {
   return errors;
 }
 
-/** WARNINGS — worth seeing, never failing the check (eng:honest-exit-codes). */
+/** WARNINGS — worth seeing, never failing the check (ADROIT.md, The tools). */
 export function warn(store) {
   const warnings = [];
   if (!IDS_IN_DECISION_TEXT_FAIL) {
@@ -899,11 +1128,11 @@ export function storeCounts(store) {
   return {
     nodes: store.nodes.length,
     decisions: decisions.length,
-    severable: decisions.filter((r) => r.severable === true).length,
-    severed: store.nodes.reduce((n, x) => n + x.severed.length, 0),
     includes: store.nodes.reduce((n, x) => n + x.includes.length, 0),
     dubious: store.nodes.filter((x) => x.dubious !== undefined).length,
     questions: store.nodes.reduce((n, x) => n + (Array.isArray(x.questions) ? x.questions.length : 0), 0),
+    views: store.records.filter((r) => r._tree === 'models' && isView(r.id)).length,
+    references: decisions.reduce((n, r) => n + effectiveReferences(r).length, 0),
   };
 }
 
@@ -926,13 +1155,13 @@ export function resolveNode(store, t) {
 /** What an agent working on `targets` reads — decisions scope DOWNWARD, so the rest of the store
  *  does not bind the work. In reading order:
  *    engineering — every engineering node;
- *    ancestor / target — each target's ancestor nodes, root first, then the target node;
+ *    ancestor / target — each target's ancestor nodes, root first, then the target node; each
+ *      ancestor (and a self.yaml target) WHOLE — with the direct leaf files of its directory;
  *    capability — every node of every capability the target or an ancestor includes, plus what
  *      those nodes include, transitively;
  *    descendant — with `subtree`, every node nested beneath a target.
  *  A node appears once, under its strongest role (target > ancestor > capability > descendant >
- *  engineering). `severed` holds the ids the targets' own chains sever. An unresolvable target
- *  throws. */
+ *  engineering). An unresolvable target throws. */
 export function scopedRead(store, targets, { subtree = false } = {}) {
   const unknown = targets.filter((t) => !resolveNode(store, t));
   if (unknown.length) throw new Error(`no decision or ledger path matches: ${unknown.join(', ')}`);
@@ -945,11 +1174,25 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
     if (!cur || PRIORITY.indexOf(r) < PRIORITY.indexOf(cur)) role.set(n.rel, r);
   };
 
+  // An ancestor is read WHOLE: its directory's own decision (`self.yaml`) and the direct leaf
+  // files beside it — the decisions that were peers on one node before one-decision-per-file. The
+  // same holds for a target that is a directory's self.yaml. Nested directories are not pulled in.
+  const leavesBeside = new Map();
+  for (const n of store.nodes) {
+    if (path.posix.basename(n.rel) === SELF) continue;
+    const dir = path.posix.dirname(n.rel);
+    leavesBeside.set(dir, [...(leavesBeside.get(dir) ?? []), n]);
+  }
+  const chainOf = (t) => [...nx.ancestorsOf(t), t].flatMap((n) => (path.posix.basename(n.rel) === SELF
+    ? [n, ...(leavesBeside.get(path.posix.dirname(n.rel)) ?? []).filter((x) => x !== t)] : [n]));
+
   for (const n of store.nodes) if (n.tree === 'engineering') claim(n, 'engineering');
   const capabilities = new Set();
   const descendants = [];
   for (const t of resolved) {
-    for (const a of nx.ancestorsOf(t)) claim(a, 'ancestor');
+    // the leaves beside a self.yaml target are the target read whole, so they read as the target
+    const beside = path.posix.basename(t.rel) === SELF ? (leavesBeside.get(path.posix.dirname(t.rel)) ?? []) : [];
+    for (const a of chainOf(t)) if (a !== t) claim(a, beside.includes(a) ? 'target' : 'ancestor');
     claim(t, 'target');
     for (const c of nx.capabilityClosure(nx.includedFor(t))) capabilities.add(c);
     if (subtree && path.posix.basename(t.rel) === SELF) {
@@ -964,7 +1207,7 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
   // capabilities, then the descendants — each group in path order.
   const rank = (n) => (n.ids.some(isPrinciple) ? 0 : 1);
   const chainOrder = [];
-  for (const t of resolved) for (const n of [...nx.ancestorsOf(t), t]) if (!chainOrder.includes(n)) chainOrder.push(n);
+  for (const t of resolved) for (const n of chainOf(t)) if (!chainOrder.includes(n)) chainOrder.push(n);
   const groups = {
     engineering: store.nodes.filter((n) => role.get(n.rel) === 'engineering').sort((a, b) => rank(a) - rank(b)),
     chain: chainOrder.filter((n) => ['ancestor', 'target'].includes(role.get(n.rel))),
@@ -972,26 +1215,33 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
     descendant: store.nodes.filter((n) => role.get(n.rel) === 'descendant'),
   };
   const nodes = [...groups.engineering, ...groups.chain, ...groups.capability, ...groups.descendant];
-  const severed = new Set(resolved.flatMap((t) => [...nx.severedFor(t)]));
-  return { nodes, role, severed, targets: resolved };
+  return { nodes, role, targets: resolved };
 }
 
-/** ONE dump line for a node — what `dump.mjs` writes, so a test can hold the shape to account.
+/** THE REFERRER WALK (user-directed 2026-10-14) — a PLANNING instrument, never part of an
+ *  implementation scope. A view's referencing decisions are its subscriber list: a change to the
+ *  view's shape is planned by walking them, each declared unaffected or given a decision at its own
+ *  node saying how the new shape propagates. Returns the view record and every node whose decision
+ *  effectively references it (explicit `references:` or a `{slug.field}` token), in store order.
+ *  An id that resolves to no view record throws. */
+export function referrersOf(store, viewId) {
+  const rec = store.byId.get(viewId);
+  if (!isView(viewId) || rec?._tree !== 'models') throw new Error(`'${viewId}' resolves to no view record`);
+  const nodes = store.nodes.filter((n) => effectiveReferences(store.byId.get(n.id)).includes(viewId));
+  return { view: rec, nodes };
+}
+
+/** ONE dump line for a node — its one decision — what `dump.mjs` writes, so a test can hold the
+ *  shape to account.
  *  `dubious`, `questions` and `context` are maintenance notes, left out unless `maintenance`. */
-export function nodeLine(store, node, { role, severed = new Set(), maintenance = false } = {}) {
-  const decisions = node.ids.map((id) => {
-    const r = store.byId.get(id);
-    return {
-      id, decision: r?.decision,
-      ...(Array.isArray(r?.rejected) && r.rejected.length ? { rejected: r.rejected } : {}),
-      ...(r?.severable === true ? { severable: true } : {}),
-      ...(severed.has(id) ? { severed: true } : {}),
-    };
-  });
+export function nodeLine(store, node, { role, maintenance = false } = {}) {
+  const r = store.byId.get(node.id);
+  const references = effectiveReferences(r);
   return {
-    node: node.rel, name: node.name, decisions,
+    node: node.rel, id: node.id, name: node.name, decision: r?.decision,
+    ...(Array.isArray(r?.rejected) && r.rejected.length ? { rejected: r.rejected } : {}),
+    ...(references.length ? { references } : {}),
     ...(node.includes.length ? { includes: node.includes } : {}),
-    ...(node.severed.length ? { severed: node.severed } : {}),
     ...(maintenance && node.dubious !== undefined ? { dubious: node.dubious } : {}),
     ...(maintenance && node.questions !== undefined ? { questions: node.questions } : {}),
     ...(maintenance && node.context !== undefined ? { context: node.context } : {}),
@@ -1000,9 +1250,9 @@ export function nodeLine(store, node, { role, severed = new Set(), maintenance =
   };
 }
 
-/** A model record as a dump line: its own content, minus loader bookkeeping and (unless
+/** A view record as a dump line: its own content, minus loader bookkeeping and (unless
  *  `maintenance`) its context. */
-export function modelLine(rec, { maintenance = false } = {}) {
+export function viewLine(rec, { maintenance = false } = {}) {
   const out = {};
   for (const [k, v] of Object.entries(rec)) {
     if (k.startsWith('_') || (k === 'context' && !maintenance)) continue;
@@ -1015,7 +1265,7 @@ export function modelLine(rec, { maintenance = false } = {}) {
 // Repo scanning (for @DecisionRef bindings)
 // ---------------------------------------------------------------------------
 
-const SKIP_DIRS = new Set(['node_modules', 'target', 'dist', 'dist-types', 'build', '.git', 'coverage']);
+const SKIP_DIRS = new Set(['node_modules', 'target', 'dist', 'build', '.git', 'coverage']);
 const TEXT_EXT = new Set(['.java', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.md', '.json', '.jsonl',
   '.sql', '.yml', '.yaml', '.conf', '.css', '.html', '.txt']);
 
@@ -1110,12 +1360,13 @@ export function compactTextChange(before = '', after = '') {
   return `${lead}"${truncate(oldMid, 90)}" → "${truncate(newMid, 90)}"${tail}`;
 }
 
-/** A node's identity across two stores: its first decision's id (paths move when names change). */
+/** A node's matching key across two stores (paths move when names change): its decision's id (the
+ *  first listed, for a previous-format file of several). */
 const nodeKey = (n) => n.ids[0] ?? n.rel;
 const parentKey = (store, n) => (n.parent ? nodeKey(store.nodeByRel.get(n.parent)) : null);
 
-/** Compare two stores. Decisions are matched by id, nodes by their first decision's id. Every
- *  structural change (parent, includes, severed) with no change to what any of the node's decisions
+/** Compare two stores. Decisions are matched by id, nodes by their matching key. Every
+ *  structural change (parent, includes) with no change to what any of the node's decisions
  *  say is flagged as a SILENT RE-WIRING — what review must see first. */
 export function diffStores(base, head, { ref = '' } = {}) {
   const added = [], deleted = [], changed = [], nodes = [];
@@ -1135,14 +1386,14 @@ export function diffStores(base, head, { ref = '' } = {}) {
     const rAdded = ra.filter((x) => !rb.includes(x)), rRemoved = rb.filter((x) => !ra.includes(x));
     if (rAdded.length) ops.push({ kind: 'rejected-grown', line: `rejected grew ${rb.length}→${ra.length}: + ${rAdded.map((x) => truncate(x, 70)).join(' | ')}` });
     if (rRemoved.length) ops.push({ kind: 'rejected-shrunk', line: `rejected shrank ${rb.length}→${ra.length}: − ${rRemoved.map((x) => truncate(x, 70)).join(' | ')}` });
-    if ((before.severable === true) !== (after.severable === true)) {
-      ops.push({ kind: 'severable', line: after.severable === true ? 'marked severable' : 'no longer severable' });
-    }
     if (ops.length) textMoved.add(after._node ? nodeKey(head.nodeByRel.get(after._node)) : after.id);
     const nb = before._node && base.nodeByRel.get(before._node), na = after._node && head.nodeByRel.get(after._node);
     if (nb && na && nodeKey(nb) !== nodeKey(na)) ops.push({ kind: 'regrouped', line: `moved from node ${nodeKey(nb)} to node ${nodeKey(na)}` });
-    if (!after._node && JSON.stringify(before.shape ?? null) !== JSON.stringify(after.shape ?? null)) {
-      ops.push({ kind: 'shape', line: 'shape edited' });
+    if (!after._node && JSON.stringify(before.schema ?? null) !== JSON.stringify(after.schema ?? null)) {
+      ops.push({ kind: 'schema', line: before.schema === undefined ? 'schema typed' : 'schema edited' });
+    }
+    if (after._node && JSON.stringify(before.references ?? []) !== JSON.stringify(after.references ?? [])) {
+      ops.push({ kind: 'references', line: `references [${(before.references ?? []).join(', ')}] → [${(after.references ?? []).join(', ')}]` });
     }
     if (ops.length) changed.push({ id: after.id, tree: after._tree ?? null, ops });
   }
@@ -1157,7 +1408,7 @@ export function diffStores(base, head, { ref = '' } = {}) {
     if (before.rel !== after.rel) ops.push({ kind: 'path', line: `file: ${before.rel} → ${after.rel}` });
     const pb = parentKey(base, before), pa = parentKey(head, after);
     if (pb !== pa) { structural = true; ops.push({ kind: 're-parented', line: `re-parented: ${pb ?? '(tree root)'} → ${pa ?? '(tree root)'}` }); }
-    for (const field of ['includes', 'severed']) {
+    for (const field of ['includes']) {
       const b = new Set(before[field]), a = new Set(after[field]);
       const gained = missing(a, b), lost = missing(b, a);
       if (gained.length) { structural = true; ops.push({ kind: `${field}-gained`, line: `${field} gained ${gained.join(', ')}` }); }
@@ -1215,23 +1466,23 @@ export function resolveUiAsset(urlPath, { dir = UI_DIR } = {}) {
 /** Reading order for the roots in the explorer. */
 export const ROOT_ORDER = ['product', 'capabilities', 'engineering', 'models'];
 
-/** A node's first decision, opening words — what a row shows beside the name. */
+/** The opening words of a node's decisions — what a row shows beside the name (display only). */
 export const gistOf = (store, n) => firstLine(store.byId.get(n.ids[0])?.decision ?? '');
 
 /** THE TREE, as the filesystem has it: the roots, one group per capability and per app, every node
- *  nested under its parent node. Models sit flat under their root. */
+ *  nested under its parent node. Views sit flat under the models root. */
 export function treeIndex(store) {
   const rows = new Map(store.nodes.map((n) => [n.rel, {
-    kind: 'node', key: n.rel, name: n.name ?? n.rel, tree: n.tree, ids: n.ids,
-    gist: gistOf(store, n), includes: n.includes, severed: n.severed,
+    kind: 'node', key: n.rel, name: n.name ?? n.rel, tree: n.tree, id: n.id,
+    gist: gistOf(store, n), includes: n.includes,
     dubious: n.dubious !== undefined, questions: Array.isArray(n.questions) ? n.questions.length : 0,
     children: [], count: 1,
   }]));
   const tops = [];
   for (const n of store.nodes) (n.parent && rows.get(n.parent) ? rows.get(n.parent).children : tops).push(rows.get(n.rel));
   for (const m of store.records.filter((r) => r._tree === 'models')) {
-    tops.push({ kind: 'model', key: m.id, name: m.id, tree: 'models', ids: [m.id], gist: firstLine(m.decision ?? ''),
-      includes: [], severed: [], dubious: false, questions: 0, children: [], count: 1 });
+    tops.push({ kind: 'view', key: m.id, name: m.id, tree: 'models', id: m.id, gist: firstLine(m.decision ?? ''),
+      includes: [], dubious: false, questions: 0, children: [], count: 1 });
   }
   const settle = (r) => {
     r.children.sort((a, b) => a.name.localeCompare(b.name));
@@ -1261,34 +1512,33 @@ export function treeIndex(store) {
 }
 
 /** One node, whole — every field, for the explorer's detail panel (a maintenance surface, so the
- *  notes the dump leaves out are all here). `key` is a node path or a decision/model id. */
+ *  notes the dump leaves out are all here). `key` is a node path or a decision/view id. */
 export function nodeDetail(store, key) {
   const n = store.nodeByRel.get(key) ?? resolveNode(store, key);
   const ix = interactionIndex(store);
   if (!n) {
     const m = store.byId.get(key);
     if (!m) return null;
-    return { model: true, key: m.id, name: m.id, tree: 'models', file: m._file,
-      decisions: [{ id: m.id, decision: m.decision, interactions: ix.byDecision.get(m.id) ?? [] }],
-      tables: tablesOf(m), context: m.context, includes: [], severed: [], ancestors: [], children: [] };
+    return { view: true, key: m.id, id: m.id, name: m.id, tree: 'models', file: m._file,
+      decision: m.decision, rejected: Array.isArray(m.rejected) ? m.rejected : [],
+      interactions: ix.byDecision.get(m.id) ?? [],
+      fields: schemaFieldsOf(m).map((f) => `${f.name}: ${f.type}`),
+      context: m.context, includes: [], ancestors: [], children: [] };
   }
   const nx = nodeIndex(store);
+  const r = store.byId.get(n.id);
   return {
-    key: n.rel, name: n.name, tree: n.tree, file: n.file,
-    decisions: n.ids.map((id) => {
-      const r = store.byId.get(id);
-      return { id, decision: r?.decision, rejected: r?.rejected ?? [], severable: r?.severable === true,
-        interactions: ix.byDecision.get(id) ?? [] };
-    }),
-    includes: n.includes, severed: n.severed, dubious: n.dubious, questions: n.questions, context: n.context,
+    key: n.rel, id: n.id, name: n.name, tree: n.tree, file: n.file,
+    decision: r?.decision, rejected: r?.rejected ?? [], references: effectiveReferences(r),
+    interactions: ix.byDecision.get(n.id) ?? [],
+    includes: n.includes, dubious: n.dubious, questions: n.questions, context: n.context,
     inScope: [...nx.capabilityClosure(nx.includedFor(n))].sort(),
-    severedHere: [...nx.severedFor(n)].sort(),
     ancestors: nx.ancestorsOf(n).map((a) => ({ key: a.rel, name: a.name })),
     children: store.nodes.filter((c) => c.parent === n.rel).map((c) => ({ key: c.rel, name: c.name })),
   };
 }
 
-/** THE CAPABILITY EXPLORER's data: per capability, its root node (the decisions an includer takes
+/** THE CAPABILITY EXPLORER's data: per capability, its root node (the decision an includer takes
  *  on), the size of its tree, the nodes
  *  outside it that INCLUDE it (grouped by tree), and its library dependencies both ways. */
 export function capabilityIndex(store) {
@@ -1305,10 +1555,8 @@ export function capabilityIndex(store) {
     const root = store.nodeByRel.get(capabilityRootRel(name));
     return {
       name, tree,
-      root: root ? { key: root.rel, name: root.name,
-        decisions: root.ids.map((id) => ({ id, decision: store.byId.get(id)?.decision })) } : null,
+      root: root ? { key: root.rel, id: root.id, name: root.name, decision: store.byId.get(root.id)?.decision } : null,
       nodes: own.length,
-      decisions: own.reduce((s, n) => s + n.ids.length, 0),
       includerCount: includers.length,
       includersByTree: [...grouped].map(([t, rows]) => ({ tree: t, cloud: cloudOfTree(t), nodes: rows }))
         .sort((a, b) => b.nodes.length - a.nodes.length || a.tree.localeCompare(b.tree)),
@@ -1318,41 +1566,32 @@ export function capabilityIndex(store) {
   });
 }
 
-/** THE ERD: one entity per model and view, its fields taken from a database schema (when one is
- *  passed) through the record's own table mapping, and the links between models. A mapped name the
- *  schema lacks comes back marked rather than dropped. Adroit's own models describe files, not
- *  tables, so the explorer passes no schema. */
-export function erdData(store, schema) {
-  const mx = modelIndex(store);
-  const tables = schema?.tables ?? {};
-  const spelling = new Map(Object.keys(tables).map((t) => [t.toLowerCase(), t]));
-  const entities = mx.models.map((rec) => {
-    const kind = kindOf(rec.id);
-    const mapped = tablesOf(rec).map((declared) => {
-      const real = spelling.get(declared.toLowerCase());
-      return { table: real ?? declared, found: Boolean(real), columns: real ? tables[real] : [] };
-    });
+/** THE ERD — a catalog of the views: one entity per view with its typed fields, and the edges
+ *  between views — each `ref<view:…>` a field carries (`ref`, labelled with the field) and each view
+ *  a view `consumes`. Storage is not drawn: it lives in the migrations and Java models. */
+export function erdData(store) {
+  const vx = viewIndex(store);
+  const entities = vx.views.map((rec) => {
+    const fields = schemaFieldsOf(rec);
     return {
-      id: rec.id, kind, name: rec.id.slice(rec.id.indexOf(':') + 1),
+      id: rec.id, kind: 'view', name: rec.id.slice(rec.id.indexOf(':') + 1),
       statement: firstLine(rec.decision ?? ''),
-      tables: mapped,
-      fields: mapped.reduce((n, t) => n + t.columns.length, 0),
-      unmapped: mapped.filter((t) => !t.found).map((t) => t.table),
-      derivations: kind === 'view' ? declaredDerivations(rec) : [],
-      consumers: mx.realizersOf(rec.id),
+      fields: fields.map(({ name, type }) => ({ name, type })),
+      derivations: declaredDerivations(rec),
+      consumers: vx.realizersOf(rec.id),
     };
   }).sort((a, b) => a.id.localeCompare(b.id));
   const known = new Set(entities.map((e) => e.id));
-  const edges = [];
-  for (const rec of mx.models) for (const [type, target] of modelEdges(rec)) if (known.has(target)) edges.push({ source: rec.id, target, type });
-  const tableNames = Object.keys(tables);
-  const claimed = new Set(entities.flatMap((e) => e.tables.filter((t) => t.found).map((t) => t.table)));
-  return {
-    entities, edges,
-    schema: {
-      present: Boolean(schema), migrations: schema?.migrations ?? 0, highWater: schema?.highWater ?? 0,
-      tables: tableNames.length, columns: tableNames.reduce((n, t) => n + tables[t].length, 0),
-      unclaimed: tableNames.filter((t) => !claimed.has(t)).sort(),
-    },
+  const edges = [], seen = new Set();
+  const add = (source, target, type, field) => {
+    const key = `${source} ${target} ${type} ${field ?? ''}`;
+    if (!known.has(target) || seen.has(key)) return;
+    seen.add(key);
+    edges.push({ source, target, type, ...(field ? { field } : {}) });
   };
+  for (const rec of vx.views) {
+    for (const f of schemaFieldsOf(rec)) for (const t of f.refs) add(rec.id, t, 'ref', f.name);
+    for (const [type, target] of viewLinks(rec)) add(rec.id, target, type);
+  }
+  return { entities, edges };
 }

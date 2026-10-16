@@ -2,8 +2,8 @@
 // `dump.mjs`, the explorer's HTTP routes) wherever a rule has one, and through lib.mjs directly for
 // the indexes those entry points read.
 //
-// The store is a tree of NODES (user-ruled 2026-10-11): each file a `name` plus `decisions`
-// (id / decision / rejected / severable), with optional `includes`, `severed`, `dubious`,
+// The store is a tree of NODES, ONE DECISION PER FILE (user-ruled 2026-10-14): each file an `id`, a
+// `name` and a `decision` (optional `rejected`, `references`), with optional `includes`, `dubious`,
 // `questions` and `context`; directory nesting is parentage. Most fixtures are a small synthetic
 // store, so each rule is asserted against a shape built for it rather than against ids of the live
 // ledger that a reorganisation would rot.
@@ -11,19 +11,20 @@
 //   node --test tools/ledger.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, renameSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, renameSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { emit } from './yaml.mjs';
 import {
-  loadLedger, buildStore, validate, warn, storeCounts, nodeIndex, scopedRead, nodeLine, resolveNode,
+  loadLedger, buildStore, validate, warn, storeCounts, scopedRead, referrersOf, nodeLine, resolveNode,
   interactionIndex, parseInteractionLog, interactionLogPath, openGaps, citedIds, compactTextChange,
-  decisionRefBindings, shapeIndex, modelIndex, tablesOf, declaredDerivations, erdData,
+  decisionRefBindings, shapeIndex, viewIndex, declaredDerivations, erdData,
   treeIndex, nodeDetail, capabilityIndex, capabilityDependencies, capabilityCycles, search,
   resolveUiAsset, entryKind, treeOfPath, cloudOfTree, idsInDecisionText, reachOverclaims, kindOf,
-  INTERACTION_KINDS, NODE_KEYS, RETIRED_CONTRACT, SELF,
+  fieldTokens, effectiveReferences,
+  INTERACTION_KINDS, NODE_KEYS, VIEW_KEYS, RETIRED_CONTRACT, SELF,
 } from './lib.mjs';
 
 const SERVER = fileURLToPath(new URL('server.mjs', import.meta.url));
@@ -41,35 +42,37 @@ process.on('exit', () => rmSync(HOME, { recursive: true, force: true }));
 // The synthetic store
 // ---------------------------------------------------------------------------
 
-const node = (name, decisions, extra = {}) => ({ name, decisions, ...extra });
-const d = (id, decision = `The ${id.replace(/[:-]/g, ' ')} rule.`, extra = {}) => ({ id, decision, ...extra });
+/** One node file: its id, name and decision (defaulted), the rest in the node's own key order. */
+const node = (id, name, extra = {}) => {
+  const all = { id, name, decision: `The ${id.replace(/[:-]/g, ' ')} rule.`, ...extra };
+  return Object.fromEntries([...NODE_KEYS.filter((k) => k in all), ...Object.keys(all).filter((k) => !NODE_KEYS.includes(k))]
+    .map((k) => [k, all[k]]));
+};
 
 /** A small store with every shape the rules talk about: an engineering root, three capabilities,
- *  each rooted at its own self.yaml (capa includes capb; capc is included by nobody), and one app whose root includes capa, carries
- *  a severable decision a descendant severs, and carries the maintenance notes. */
+ *  each rooted at its own self.yaml (capa includes capb; capc is included by nobody), and one app
+ *  whose root includes capa and carries the maintenance notes, with a leaf decision beside its tools. */
 const BASE = () => ({
   'domains.yaml': { corpus: 'fixture', eng: 'Engineering.', app: 'The app.' },
-  'engineering/a-principle.yaml': node('A principle', [d('principle:fixture-principle')]),
-  'engineering/a-rule.yaml': node('A rule', [d('eng:a-rule')]),
-  'capabilities/capa/self.yaml': node('Root A', [d('capa:root-a', 'The capa root rule.', { severable: true })]),
-  'capabilities/capa/leaf-a.yaml': node('Leaf A', [d('capa:leaf-a')], { includes: ['capb'] }),
-  'capabilities/capb/self.yaml': node('Only B', [d('capb:only-b')]),
-  'capabilities/capc/self.yaml': node('Only C', [d('capc:only-c', 'The capc rule.', { severable: true })]),
-  'product/app/self.yaml': node('App', [
-    d('story:app', 'A person runs the app.', { rejected: ['a second app'] }),
-    d('app:on-phone', 'Every surface works on a phone.', { severable: true }),
-    d('app:binding', 'Every surface binds this.'),
-  ], {
+  'engineering/a-principle.yaml': node('principle:fixture-principle', 'A principle'),
+  'engineering/a-rule.yaml': node('eng:a-rule', 'A rule'),
+  'capabilities/capa/self.yaml': node('capa:root-a', 'Root A', { decision: 'The capa root rule.' }),
+  'capabilities/capa/leaf-a.yaml': node('capa:leaf-a', 'Leaf A', { includes: ['capb'] }),
+  'capabilities/capb/self.yaml': node('capb:only-b', 'Only B'),
+  'capabilities/capc/self.yaml': node('capc:only-c', 'Only C', { decision: 'The capc rule.' }),
+  'product/app/self.yaml': node('story:app', 'App', {
+    decision: 'A person runs the app.', rejected: ['a second app'],
     includes: ['capa'],
     dubious: 'the phone decision may no longer hold',
     questions: ['does the free tier still bind?'],
-    context: { why: 'the app root' },
+    context: 'the app root',
   }),
-  'product/app/tools/self.yaml': node('Tools', [d('story:tools')], { severed: ['app:on-phone'] }),
-  'product/app/tools/one-tool/self.yaml': node('One tool', [d('app:one-tool')]),
-  'product/app/tools/one-tool/detail.yaml': node('Detail', [d('app:detail')]),
-  'product/app/sibling.yaml': node('Sibling', [d('app:sibling', 'A sibling rule.', { severable: true })]),
-  'models/model.thing.yaml': { id: 'model:thing', decision: 'A thing.', shape: { fields: { 'thing.id': 'scalar (app:detail) — the key', 'thing.at': 'scalar' } } },
+  'product/app/on-phone.yaml': node('app:on-phone', 'On phone', { decision: 'Every surface works on a phone.' }),
+  'product/app/tools/self.yaml': node('story:tools', 'Tools'),
+  'product/app/tools/one-tool/self.yaml': node('app:one-tool', 'One tool'),
+  'product/app/tools/one-tool/detail.yaml': node('app:detail', 'Detail'),
+  'product/app/sibling.yaml': node('app:sibling', 'Sibling', { decision: 'A sibling rule.' }),
+  'models/view.thing.yaml': { id: 'view:thing', decision: 'A thing as it crosses a boundary.', schema: { fields: { id: 'int (app:detail) — the key', at: 'epoch' } } },
 });
 
 /** The files as an in-memory store, through the same classifier and parser the loader uses. */
@@ -105,21 +108,21 @@ const edit = (fn) => { const f = BASE(); fn(f); return f; };
 // The live store
 // ---------------------------------------------------------------------------
 
-test('the live store passes its own check, and the summary counts the node format', () => {
+test('the live store passes its own check, and the summary counts one decision per node file', () => {
   const r = check(LEDGER);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^ledger: \d+ nodes, \d+ decisions \(\d+ severable, \d+ severed\), \d+ include\(s\), \d+ dubious node\(s\), \d+ open question\(s\), /);
+  assert.match(r.stdout, /^ledger: \d+ decisions, \d+ include\(s\), \d+ dubious node\(s\), \d+ open question\(s\), /);
+  const { nodes, records } = loadLedger();
+  assert.equal(records.filter((x) => x._node).length, nodes.length, 'one decision per node file');
+  assert.ok(nodes.every((n) => n.ids.length === 1 && !n.legacy), 'every live node file is in the singular format');
   assert.match(r.stdout, /\(validated/);
 });
 
-// The app's citations are a compliance worklist, not a gate on the ledger (ADROIT.md, The protocol):
-// a ledger change that deletes a cited id reddens this until the code is rebound.
 test('every @DecisionRef in the app resolves against the live store', () => {
   const { byId } = loadLedger();
   const bindings = decisionRefBindings();
-  assert.ok(bindings.size > 20, 'the app binds its code to decisions');
-  const dangling = [...bindings.keys()].filter((id) => !byId.has(id)).sort();
-  assert.deepEqual(dangling, [], 'every bound id names a live decision');
+  assert.ok(bindings.size > 20, 'the backend binds tests to decisions');
+  assert.deepEqual([...bindings.keys()].filter((id) => !byId.has(id)), [], 'every bound id names a live decision');
 });
 
 // ---------------------------------------------------------------------------
@@ -129,51 +132,84 @@ test('every @DecisionRef in the app resolves against the live store', () => {
 test('the synthetic store is valid — every rule below breaks it in exactly one way', () => {
   assert.deepEqual(errorsFor(BASE()), []);
   const s = storeOf(BASE());
-  assert.equal(s.nodes.length, 11);
-  assert.deepEqual(s.nodeByRel.get('product/app/self.yaml').ids, ['story:app', 'app:on-phone', 'app:binding']);
+  assert.equal(s.nodes.length, 12);
+  assert.equal(s.records.filter((r) => r._node).length, 12, 'one decision per node');
+  assert.deepEqual(s.nodeByRel.get('product/app/self.yaml').ids, ['story:app']);
+  assert.equal(s.nodeByRel.get('product/app/self.yaml').id, 'story:app');
+  assert.equal(s.byId.get('app:on-phone')._nestedUnder, 'product/app/self.yaml', 'a leaf file is a child decision of its directory');
   assert.equal(s.byId.get('app:detail')._nestedUnder, 'product/app/tools/one-tool/self.yaml', 'parentage is the directory');
   assert.equal(s.byId.get('app:detail')._node, 'product/app/tools/one-tool/detail.yaml');
   assert.equal(new Set(s.records.map((r) => r._rel)).size, s.records.length, 'every decision has a unique _rel');
 });
 
 test('a retired key is a hard error, naming what replaced it', () => {
-  for (const key of ['links', 'peers', 'mounts', 'severs', 'id', 'decision', 'rejected', 'commitments']) {
-    const errors = errorsFor(edit((f) => { f['product/app/sibling.yaml'][key] = key === 'id' ? 'app:x' : []; }));
+  for (const key of ['links', 'peers', 'mounts', 'severs', 'severed', 'severable', 'commitments', 'decisions']) {
+    const errors = errorsFor(edit((f) => { f['product/app/sibling.yaml'][key] = []; }));
     assert.deepEqual(rules(errors), ['retired-key'], key);
     assert.match(errors[0].message, new RegExp(`^'${key}' is retired`));
   }
   assert.match(errorsFor(edit((f) => { f['product/app/sibling.yaml'].mounts = ['capa']; }))[0].message, /includes/);
 });
 
-test('an unknown key is a hard error — on a node and on a decision entry', () => {
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].status = 'live'; }))), ['unknown-key']);
-  const onDecision = errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].links = { domain: 'app' }; }));
-  assert.deepEqual(rules(onDecision), ['unknown-key']);
-  assert.equal(onDecision[0].id, 'app:sibling');
-  assert.deepEqual(NODE_KEYS, ['name', 'decisions', 'includes', 'severed', 'dubious', 'questions', 'context']);
+test('the decision-list format is retired: a decisions: list fails, saying one decision per file', () => {
+  const listed = errorsFor(edit((f) => {
+    f['product/app/sibling.yaml'] = { name: 'Sibling', decisions: [{ id: 'app:sibling', decision: 'A sibling rule.' }, { id: 'app:peer', decision: 'A peer.' }] };
+  }));
+  assert.deepEqual(listed.map((e) => [e.id, e.rule]), [['product/app/sibling.yaml', 'retired-key']]);
+  assert.match(listed[0].message, /^'decisions' is retired — one decision per file/);
+  // …and it is still READ (for --diff against older refs): both its decisions load
+  const s = storeOf(edit((f) => {
+    f['product/app/sibling.yaml'] = { name: 'Sibling', decisions: [{ id: 'app:sibling', decision: 'A sibling rule.' }, { id: 'app:peer', decision: 'A peer.' }] };
+  }));
+  assert.deepEqual(s.nodeByRel.get('product/app/sibling.yaml').ids, ['app:sibling', 'app:peer']);
+  assert.equal(s.byId.get('app:peer').decision, 'A peer.');
 });
 
-test('a node needs a one-line name and a non-empty list of decisions, each with an id and one decision', () => {
+test('an unknown key is a hard error', () => {
+  const unknown = errorsFor(edit((f) => { f['product/app/sibling.yaml'].status = 'live'; }));
+  assert.deepEqual(rules(unknown), ['unknown-key']);
+  assert.match(unknown[0].message, /^'status' is not a node key — a node holds only id, name, decision, rejected, references, includes, dubious, questions, context$/);
+  assert.deepEqual(NODE_KEYS, ['id', 'name', 'decision', 'rejected', 'references', 'includes', 'dubious', 'questions', 'context']);
+});
+
+test('severs are gone: severed and severable on a node both fail as retired keys', () => {
+  const severed = errorsFor(edit((f) => { f['product/app/tools/self.yaml'].severed = ['app:on-phone']; }));
+  assert.deepEqual(rules(severed), ['retired-key']);
+  assert.equal(severed[0].id, 'product/app/tools/self.yaml');
+  const severable = errorsFor(edit((f) => { f['product/app/on-phone.yaml'].severable = true; }));
+  assert.deepEqual(rules(severable), ['retired-key']);
+  assert.equal(severable[0].id, 'product/app/on-phone.yaml');
+});
+
+test('a node needs an id, a one-line name and one decision', () => {
   const bad = [
+    (f) => { delete f['product/app/sibling.yaml'].id; },
+    (f) => { f['product/app/sibling.yaml'].id = ''; },
+    (f) => { f['product/app/sibling.yaml'].id = 7; },
     (f) => { delete f['product/app/sibling.yaml'].name; },
     (f) => { f['product/app/sibling.yaml'].name = 'two\nlines'; },
-    (f) => { f['product/app/sibling.yaml'].decisions = []; },
-    (f) => { delete f['product/app/sibling.yaml'].decisions; },
-    (f) => { f['product/app/sibling.yaml'].decisions[0].decision = ' '; },
-    (f) => { f['product/app/sibling.yaml'].decisions[0].rejected = 'not a list'; },
-    (f) => { f['product/app/sibling.yaml'].decisions[0].severable = 'yes'; },
-    (f) => { f['product/app/sibling.yaml'].decisions[0] = 'just text'; },
+    (f) => { delete f['product/app/sibling.yaml'].decision; },
+    (f) => { f['product/app/sibling.yaml'].decision = ' '; },
+    (f) => { f['product/app/sibling.yaml'].decision = ['a list']; },
+    (f) => { f['product/app/sibling.yaml'].rejected = 'not a list'; },
+    (f) => { f['product/app/sibling.yaml'] = 'just text'; },
   ];
   for (const fn of bad) assert.deepEqual(rules(errorsFor(edit(fn))), ['shape'], fn.toString());
-  assert.deepEqual(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].severable = false; })), [],
-    'severable is a boolean, false allowed');
+  const noId = errorsFor(edit((f) => { delete f['product/app/sibling.yaml'].id; }));
+  assert.equal(noId[0].id, 'product/app/sibling.yaml', 'a node with no id is named by its path');
+  assert.match(noId[0].message, /^id must be a non-empty string/);
+  const noDecision = errorsFor(edit((f) => { delete f['product/app/sibling.yaml'].decision; }));
+  assert.equal(noDecision[0].id, 'app:sibling');
+  assert.match(noDecision[0].message, /^decision must be a non-empty string/);
 });
 
 test('ids are unique across the whole ledger, slug-shaped, and in a declared namespace', () => {
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions.push(d('app:detail')); }))), ['duplicate-id']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].id = 'app:D14'; }))), ['id-shape']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].id = 'nope:sibling'; }))), ['namespace']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].id = 'capb:sibling'; }))), ['namespace'],
+  const dup = errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'app:detail'; }));
+  assert.deepEqual(rules(dup), ['duplicate-id']);
+  assert.match(dup[0].message, /^also written in product\/app\/(sibling|tools\/one-tool\/detail)\.yaml#app:detail/);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'app:D14'; }))), ['id-shape']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'nope:sibling'; }))), ['namespace']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'capb:sibling'; }))), ['namespace'],
     'a capability-namespaced decision lives in its capability');
 });
 
@@ -204,48 +240,10 @@ test('dubious and questions: their shape is checked, and they are never a fault 
   assert.equal(storeCounts(s).questions, 1);
 });
 
-test('context is free-form: a string or a mapping', () => {
+test('context is one free-form text, never a mapping', () => {
   assert.deepEqual(errorsFor(edit((f) => { f['product/app/self.yaml'].context = 'a plain note'; })), []);
-  assert.deepEqual(errorsFor(edit((f) => { f['product/app/self.yaml'].context = { 'story:app': { why: 'w' }, 'app:binding': 'x' }; })), []);
-});
-
-// ---------------------------------------------------------------------------
-// Severed
-// ---------------------------------------------------------------------------
-
-test('severed: a severable decision of an ancestor node may be severed', () => {
-  const s = storeOf(BASE());
-  assert.deepEqual(nodeIndex(s).problems, []);
-  assert.deepEqual([...nodeIndex(s).severedFor('product/app/tools/one-tool/detail.yaml')], ['app:on-phone'],
-    'a sever binds the severing node and every descendant');
-  assert.deepEqual([...nodeIndex(s).severedFor('product/app/sibling.yaml')], [], 'and nothing beside it');
-});
-
-test('severed: an unmarked, out-of-reach or unknown decision fails the check', () => {
-  const sever = (id) => errorsFor(edit((f) => { f['product/app/tools/self.yaml'].severed = [id]; }));
-  const unmarked = sever('app:binding');
-  assert.deepEqual(rules(unmarked), ['severed']);
-  assert.match(unmarked[0].message, /not marked severable/);
-  const outOfReach = sever('app:sibling');
-  assert.deepEqual(rules(outOfReach), ['severed']);
-  assert.match(outOfReach[0].message, /neither a decision of an ancestor node nor of a capability this node includes/);
-  assert.match(sever('app:nope')[0].message, /names no decision/);
-  assert.match(sever('model:thing')[0].message, /names no decision/, 'a model is not a decision');
-  // a node cannot sever its own decision: it is not an ancestor's
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/self.yaml'].severed = ['app:on-phone']; }))), ['severed']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/tools/self.yaml'].severed = 'app:on-phone'; }))), ['severed'],
-    'severed is a list');
-});
-
-test('severed: a severable decision brought in by an included capability may be severed — one not included may not', () => {
-  assert.deepEqual(errorsFor(edit((f) => { f['product/app/tools/self.yaml'].severed = ['app:on-phone', 'capa:root-a']; })), [],
-    'capa is included by the app root, an ancestor');
-  const notIncluded = errorsFor(edit((f) => { f['product/app/tools/self.yaml'].severed = ['capc:only-c']; }));
-  assert.deepEqual(rules(notIncluded), ['severed'], 'capc is severable but nobody in the chain includes it');
-  assert.deepEqual(errorsFor(edit((f) => {
-    f['product/app/tools/self.yaml'].includes = ['capc'];
-    f['product/app/tools/self.yaml'].severed = ['capc:only-c'];
-  })), [], 'including it on the node itself makes it severable there');
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/self.yaml'].context = { why: 'w', src: 's' }; }))), ['context']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/self.yaml'].context = ''; }))), ['context']);
 });
 
 // ---------------------------------------------------------------------------
@@ -271,6 +269,9 @@ test('the scoped read: engineering, the ancestors, the target, and every include
     'engineering/a-principle.yaml': 'engineering',
     'engineering/a-rule.yaml': 'engineering',
     'product/app/self.yaml': 'ancestor',
+    // an ancestor is read WHOLE: the leaf files beside its self.yaml (its former peers) come with it
+    'product/app/on-phone.yaml': 'ancestor',
+    'product/app/sibling.yaml': 'ancestor',
     'product/app/tools/self.yaml': 'ancestor',
     'product/app/tools/one-tool/self.yaml': 'ancestor',
     'product/app/tools/one-tool/detail.yaml': 'target',
@@ -280,32 +281,49 @@ test('the scoped read: engineering, the ancestors, the target, and every include
     // …and what capa's own nodes include joins with it, transitively
     'capabilities/capb/self.yaml': 'capability',
   });
-  assert.ok(!r.role.has('product/app/sibling.yaml'), 'a sibling binds nothing here');
   assert.ok(!r.role.has('capabilities/capc/self.yaml'), 'a capability nobody includes stays out');
-  assert.deepEqual([...r.severed], ['app:on-phone'], 'the chain severs the phone decision');
-  assert.deepEqual(r.nodes.map((n) => n.rel).slice(0, 6), [
+  assert.deepEqual(r.nodes.map((n) => n.rel).slice(0, 8), [
     'engineering/a-principle.yaml', 'engineering/a-rule.yaml', 'product/app/self.yaml',
+    'product/app/on-phone.yaml', 'product/app/sibling.yaml',
     'product/app/tools/self.yaml', 'product/app/tools/one-tool/self.yaml', 'product/app/tools/one-tool/detail.yaml',
-  ], 'reading order: engineering (principles first), then the chain root-first');
-  // the sibling, read on its own, sees the include but not the sever
+  ], 'reading order: engineering (principles first), then the chain root-first, each ancestor\'s leaves after its self.yaml');
+  // the sibling, read on its own, sees the include
   const sib = scopedRead(s, ['product/app/sibling.yaml']);
   assert.equal(sib.role.get('capabilities/capa/self.yaml'), 'capability');
-  assert.deepEqual([...sib.severed], []);
+});
+
+test('the scoped read restores a split-out former peer of an ancestor — and pulls in no nested directory', () => {
+  // product/app/self.yaml once held story:app AND app:on-phone as peers; split, app:on-phone is a
+  // leaf beside it. Reading anything beneath the app reads the app root whole, so app:on-phone comes too.
+  onDisk(BASE(), (dir) => {
+    const out = lines(dump(dir, '--scope', 'app:detail')).filter((l) => l.node);
+    const peer = out.find((l) => l.id === 'app:on-phone');
+    assert.ok(peer, 'the former peer of an ancestor is in scope');
+    assert.equal(peer.scope_role, 'ancestor');
+  });
+  const s = storeOf(BASE());
+  const leaf = scopedRead(s, ['app:on-phone']);
+  assert.equal(leaf.role.get('product/app/sibling.yaml'), 'ancestor', 'a target leaf reads its parent whole');
+  assert.ok(!leaf.role.has('product/app/tools/self.yaml') && !leaf.role.has('product/app/tools/one-tool/detail.yaml'),
+    'only the direct leaf files — never a nested directory');
 });
 
 test('the scoped read: --subtree adds the descendants; a target is an id, a node file or a directory; unknown throws', () => {
   const s = storeOf(BASE());
   const r = scopedRead(s, ['app:one-tool'], { subtree: true });
-  assert.equal(r.role.get('product/app/tools/one-tool/detail.yaml'), 'descendant');
+  assert.equal(r.role.get('product/app/tools/one-tool/detail.yaml'), 'target', 'a leaf beside a self.yaml target is the target read whole');
   assert.equal(resolveNode(s, 'ledger/product/app/tools/one-tool/').rel, 'product/app/tools/one-tool/self.yaml');
   assert.equal(resolveNode(s, 'product/app/sibling.yaml').rel, 'product/app/sibling.yaml');
-  assert.equal(resolveNode(s, 'app:binding').rel, 'product/app/self.yaml', 'a decision id finds its node');
+  assert.equal(resolveNode(s, 'app:on-phone').rel, 'product/app/on-phone.yaml', 'a decision id finds its node');
+  const sub = scopedRead(s, ['story:app'], { subtree: true });
+  assert.equal(sub.role.get('product/app/tools/one-tool/detail.yaml'), 'descendant', '--subtree still reaches the nested directories');
+  assert.ok(!scopedRead(s, ['story:app']).role.has('product/app/tools/self.yaml'), 'without --subtree, a nested directory stays out');
   assert.throws(() => scopedRead(s, ['app:nope']), /no decision or ledger path matches: app:nope/);
   // a target inside engineering is the TARGET, not merely engineering
   assert.equal(scopedRead(s, ['eng:a-rule']).role.get('engineering/a-rule.yaml'), 'target');
 });
 
-test('dump --scope writes ONE line per node, with roles, the sever marked, and the notes left out', () => {
+test('dump --scope writes ONE line per node — one decision — with roles, and the notes left out', () => {
   onDisk(BASE(), (dir) => {
     const r = dump(dir, '--scope', 'app:detail');
     assert.equal(r.status, 0, r.stderr);
@@ -313,22 +331,49 @@ test('dump --scope writes ONE line per node, with roles, the sever marked, and t
     assert.deepEqual(out[0], { domains: { eng: 'Engineering.', app: 'The app.' } });
     assert.ok(out.every((l) => l.domains || l.node), 'only the domains and the nodes — no other line kind');
     const nodes = out.filter((l) => l.node);
-    assert.equal(nodes.length, 9, 'one line per node in scope');
+    assert.equal(nodes.length, 11, 'one line per node in scope');
     const root = nodes.find((l) => l.node === 'product/app/self.yaml');
     assert.deepEqual(root, {
-      node: 'product/app/self.yaml', name: 'App',
-      decisions: [
-        { id: 'story:app', decision: 'A person runs the app.', rejected: ['a second app'] },
-        { id: 'app:on-phone', decision: 'Every surface works on a phone.', severable: true, severed: true },
-        { id: 'app:binding', decision: 'Every surface binds this.' },
-      ],
+      node: 'product/app/self.yaml', id: 'story:app', name: 'App',
+      decision: 'A person runs the app.', rejected: ['a second app'],
       includes: ['capa'], tree: 'product/app', scope_role: 'ancestor',
     }, 'dubious, questions and context are omitted by default');
-    assert.deepEqual(nodes.find((l) => l.node === 'product/app/tools/self.yaml').severed, ['app:on-phone']);
+    assert.ok(nodes.every((l) => !('severed' in l) && !('severable' in l) && !('decisions' in l)),
+      'no sever marks and no decision list on any line');
     assert.deepEqual(nodes.map((l) => l.scope_role).filter((x, i, a) => a.indexOf(x) === i),
       ['engineering', 'ancestor', 'target', 'capability']);
     assert.ok(nodes.every((l) => !('dubious' in l) && !('questions' in l) && !('context' in l)));
-    assert.match(r.stderr, /^9 of 11 nodes in scope \(2 engineering, 3 ancestor, 1 target, 3 capability\) · 11 of 13 decisions \(1 severed\)\n$/);
+    assert.match(r.stderr, /^11 of 12 decisions in scope \(2 engineering, 5 ancestor, 1 target, 3 capability\)\n$/);
+  });
+});
+
+test('the referrer walk: a view plus every decision referencing it, explicit or by token — planning only', () => {
+  const files = edit((f) => {
+    f['product/app/sibling.yaml'].references = ['view:thing'];
+    f['product/app/tools/one-tool/detail.yaml'].decision = 'The {thing.id} key is the door.';
+  });
+  const s = storeOf(files);
+  const { view, nodes } = referrersOf(s, 'view:thing');
+  assert.equal(view.id, 'view:thing');
+  assert.deepEqual(nodes.map((n) => n.id).sort(), ['app:detail', 'app:sibling'],
+    'an explicit references: entry and a {slug.field} token both subscribe');
+  assert.throws(() => referrersOf(s, 'view:nope'), /'view:nope' resolves to no view record/);
+  assert.throws(() => referrersOf(s, 'app:detail'), /'app:detail' resolves to no view record/,
+    'only a view has referrers');
+  onDisk(files, (dir) => {
+    const r = dump(dir, '--referrers', 'view:thing');
+    assert.equal(r.status, 0, r.stderr);
+    const out = lines(r);
+    assert.equal(out[0].id, 'view:thing', 'the view leads');
+    assert.equal(out[0].tree, 'models');
+    const refs = out.slice(1);
+    assert.deepEqual(refs.map((l) => l.id).sort(), ['app:detail', 'app:sibling']);
+    assert.ok(refs.every((l) => l.scope_role === 'referrer'), 'every referrer line says so');
+    assert.ok(out.every((l) => !l.domains), 'the walk carries no domains line — view and subscribers only');
+    assert.match(r.stderr, /^2 decision\(s\) reference view:thing\n$/);
+    assert.equal(dump(dir, '--referrers', 'view:nope').status, 1, 'an unknown view id exits 1');
+    assert.equal(dump(dir, '--referrers', 'view:thing', '--scope', 'app:detail').status, 1,
+      'the planning walk never rides inside a scoped read');
   });
 });
 
@@ -338,25 +383,29 @@ test('dump --maintenance brings back dubious, questions and context — scoped a
       const root = lines(dump(dir, ...args)).find((l) => l.node === 'product/app/self.yaml');
       assert.equal(root.dubious, 'the phone decision may no longer hold', args.join(' '));
       assert.deepEqual(root.questions, ['does the free tier still bind?']);
-      assert.deepEqual(root.context, { why: 'the app root' });
+      assert.deepEqual(root.context, 'the app root');
     }
-    const model = lines(dump(dir, '--maintenance')).find((l) => l.id === 'model:thing');
-    assert.equal(model.tree, 'models');
+    const view = lines(dump(dir, '--maintenance')).find((l) => l.id === 'view:thing');
+    assert.equal(view.tree, 'models');
+    assert.deepEqual(Object.keys(view), ['id', 'decision', 'schema', 'tree'], 'a view line is its own content');
   });
 });
 
-test('the full dump is one line per node too, then the models; --context is gone', () => {
+test('the full dump is one line per node too, then the views; --context is gone', () => {
   onDisk(BASE(), (dir) => {
     const r = dump(dir);
     assert.equal(r.status, 0, r.stderr);
     const out = lines(r);
     const nodes = out.filter((l) => l.node);
-    assert.equal(nodes.length, 11);
+    assert.equal(nodes.length, 12);
     assert.ok(nodes.every((l) => !('scope_role' in l) && !('context' in l) && !('dubious' in l)));
+    const at = (rel) => nodes.findIndex((l) => l.node === rel);
+    assert.ok(at('product/app/self.yaml') < at('product/app/on-phone.yaml')
+      && at('product/app/tools/self.yaml') < at('product/app/tools/one-tool/self.yaml'),
+      'a directory\'s self.yaml prints before its other children');
     assert.deepEqual(nodes.slice(0, 2).map((l) => l.node), ['engineering/a-principle.yaml', 'engineering/a-rule.yaml']);
-    assert.ok(!nodes.some((l) => l.decisions.some((x) => 'severed' in x)), 'severed marks are a scoped-read fact');
-    assert.equal(out.at(-1).id, 'model:thing');
-    assert.match(r.stderr, /^11 nodes · 13 decisions · 1 models\/views\n$/);
+    assert.equal(out.at(-1).id, 'view:thing');
+    assert.match(r.stderr, /^12 decisions · 1 views\n$/);
     assert.equal(dump(dir, '--subtree').status, 1, '--subtree needs --scope');
     assert.equal(dump(dir, '--scope', 'app:nope').status, 1);
   });
@@ -365,9 +414,9 @@ test('the full dump is one line per node too, then the models; --context is gone
 test('nodeLine is the dump\'s line, and leaves notes out unless asked', () => {
   const s = storeOf(BASE());
   const n = s.nodeByRel.get('product/app/self.yaml');
-  assert.deepEqual(Object.keys(nodeLine(s, n)), ['node', 'name', 'decisions', 'includes', 'tree']);
+  assert.deepEqual(Object.keys(nodeLine(s, n)), ['node', 'id', 'name', 'decision', 'rejected', 'includes', 'tree']);
   assert.deepEqual(Object.keys(nodeLine(s, n, { maintenance: true, role: 'target' })),
-    ['node', 'name', 'decisions', 'includes', 'dubious', 'questions', 'context', 'tree', 'scope_role']);
+    ['node', 'id', 'name', 'decision', 'rejected', 'includes', 'dubious', 'questions', 'context', 'tree', 'scope_role']);
 });
 
 // ---------------------------------------------------------------------------
@@ -375,10 +424,10 @@ test('nodeLine is the dump\'s line, and leaves notes out unless asked', () => {
 // ---------------------------------------------------------------------------
 
 test('decision text names no record id — rejected and context may', () => {
-  const named = errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].decision = 'Follows app:detail closely.'; }));
+  const named = errorsFor(edit((f) => { f['product/app/sibling.yaml'].decision = 'Follows app:detail closely.'; }));
   assert.deepEqual(rules(named), ['id-in-decision-text']);
   assert.deepEqual(errorsFor(edit((f) => {
-    f['product/app/sibling.yaml'].decisions[0].rejected = ['what app:detail does'];
+    f['product/app/sibling.yaml'].rejected = ['what app:detail does'];
     f['product/app/sibling.yaml'].context = 'see app:detail';
   })), []);
   const s = storeOf(BASE());
@@ -386,23 +435,268 @@ test('decision text names no record id — rejected and context may', () => {
     'only tokens that resolve count');
 });
 
-test('a decision never names a model or view — in its decisions or its context', () => {
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].decision = 'Stores a model:thing.'; }))), ['model-in-decision']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].context = { why: 'see model:thing' }; }))), ['model-in-decision']);
-  assert.deepEqual(errorsFor(edit((f) => { f['product/app/self.yaml'].questions = ['should model:thing split?']; })), [],
+test('a decision never names a view (or a retired model) id — in its decisions or its context', () => {
+  const named = errorsFor(edit((f) => { f['product/app/sibling.yaml'].decision = 'Stores a view:thing.'; }));
+  assert.deepEqual(rules(named), ['model-in-decision']);
+  assert.match(named[0].message, /\{slug\.field\} token, or list the view in the decision's references:/);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].context = 'see view:thing'; }))), ['model-in-decision']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].rejected = ['a model:thing table']; }))), ['model-in-decision'],
+    'a retired model: id is no more welcome in the text than a view id');
+  assert.deepEqual(errorsFor(edit((f) => { f['product/app/self.yaml'].questions = ['should view:thing split?']; })), [],
     'questions are maintenance notes, never a check fault');
 });
 
-test('a model\'s field citations resolve — a dangling one fails the check; uncited fields are a report', () => {
+test('a view\'s field citations resolve — a dangling one fails the check; uncited fields are a report', () => {
   const s = storeOf(BASE());
   const sx = shapeIndex(s);
   assert.deepEqual(sx.edges.map((e) => e.ruling), ['app:detail']);
-  assert.deepEqual(sx.unlinked.map((u) => u.field), ['thing.at']);
-  assert.deepEqual(modelIndex(s).realizersOf('model:thing'), ['product/app']);
-  const dangling = errorsFor(edit((f) => { f['models/model.thing.yaml'].shape.fields['thing.at'] = 'scalar (app:gone)'; }));
+  assert.deepEqual(sx.unlinked.map((u) => u.field), ['at']);
+  assert.deepEqual(viewIndex(s).realizersOf('view:thing'), ['product/app']);
+  const dangling = errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'epoch (app:gone)'; }));
   assert.deepEqual(rules(dangling), ['shape-citation']);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].decisions[0].id = 'model:sibling'; }))), ['models'],
-    'a model lives in the models directory');
+  assert.match(dangling[0].message, /^schema\.at cites 'app:gone'/);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'view:sibling'; }))), ['models'],
+    'a view lives in the models directory');
+  const stranger = errorsFor(edit((f) => { f['models/view.thing.yaml'].id = 'app:thing'; }));
+  assert.ok(rules(stranger).includes('models'), 'the models directory holds only view: records');
+  assert.match(stranger.find((e) => e.rule === 'models').message, /holds only view: records/);
+});
+
+// --- typed view schemas and decision references --------------------------------
+
+/** BASE plus a second typed view, exercising the whole type vocabulary. */
+const TYPED = () => edit((f) => {
+  f['models/view.widget.yaml'] = {
+    id: 'view:widget', decision: 'A widget as it crosses a boundary.',
+    schema: {
+      fields: {
+        name: 'string (app:detail) — the widget\'s name',
+        notes: 'text',
+        size: 'int (app:one-tool, app:sibling) — how big',
+        big: 'long', on: 'bool', at: 'epoch — when', day: 'date', blob: 'json',
+        state: 'enum<OPEN|CLOSED|on-hold> (app:detail) — its state',
+        thing: 'ref<view:thing> — the thing behind it',
+        self: 'ref<view:widget>',
+        total: 'derived<int> (app:detail) — read at request time',
+        owner: 'derived<ref<view:thing>>',
+        score: 'double — a decimal measure',
+        parts: 'list<ref<view:widget>> — nested widgets',
+        tags: 'list<string>',
+        byDay: 'map<string,int> — counts keyed by day',
+        slots: 'map<long,list<ref<view:thing>>>',
+      },
+    },
+  };
+});
+
+test('a typed view schema validates its closed type vocabulary and feeds the same field links', () => {
+  const s = storeOf(TYPED());
+  assert.deepEqual(validate(s), []);
+  const sx = shapeIndex(s);
+  const widget = (xs) => xs.filter((e) => e.model === 'view:widget');
+  assert.deepEqual(widget(sx.edges).map((e) => `${e.section}.${e.field}→${e.ruling}`).sort(), [
+    'fields.name→app:detail', 'fields.size→app:one-tool', 'fields.size→app:sibling', 'fields.state→app:detail',
+    'fields.total→app:detail',
+  ]);
+  assert.ok(widget(sx.unlinked).some((u) => u.field === 'notes'), 'an uncited typed field is unlinked');
+  assert.deepEqual(declaredDerivations(s.byId.get('view:widget')), ['total', 'owner']);
+  assert.equal(storeCounts(s).views, 2);
+  assert.ok(!('typedViews' in storeCounts(s)), 'every view is typed — there is no second count');
+});
+
+test('a malformed type token is a schema-type fault', () => {
+  for (const bad of ['scalar — the old kind', 'varchar', 'String', 'enum<>', 'enum<a||b>', 'enum<A|A>', 'enum<a b>',
+    'ref<thing>', 'ref<model:thing', 'ref<view:gone> — names no record', 'ref<app:detail>', 'derived', 'derived<blob>',
+    'derived<ref<view:gone>>', 'string(app:detail)', '', 'decimal', 'float', 'list<>', 'list<varchar>', 'list',
+    'map<string>', 'map<bool,int>', 'map<string,blob>', 'map<string,ref<view:gone>>']) {
+    const errors = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.fields.notes = bad; }));
+    assert.deepEqual(rules(errors), ['schema-type'], JSON.stringify(bad));
+    assert.match(errors[0].message, /^schema\.notes: /);
+  }
+});
+
+test('a typed schema holds fields only — never tables or pending inside it, never empty', () => {
+  const pending = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.pending = { later: 'not built' }; }));
+  assert.deepEqual(rules(pending), ['schema-type']);
+  assert.match(pending[0].message, /states current truth only/);
+  const tables = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.tables = ['widget']; }));
+  assert.deepEqual(rules(tables), ['schema-type']);
+  assert.match(tables[0].message, /lists no tables/);
+  assert.deepEqual(rules(errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.fields = {}; }))), ['schema-type']);
+});
+
+// --- the retired model layer ----------------------------------------------------------
+
+test('a model: id is retired — in the models directory or in a node, it fails naming what replaced it', () => {
+  const inModels = errorsFor(edit((f) => { f['models/model.thing.yaml'] = { id: 'model:thing', decision: 'A thing.', schema: { fields: { id: 'int' } } }; }));
+  assert.deepEqual(rules(inModels), ['retired-kind']);
+  assert.equal(inModels[0].id, 'model:thing');
+  assert.match(inModels[0].message, /^'model:' is retired — models were retired for views .* storage lives in the migrations and Java models/);
+  const inNode = errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'model:sibling'; }));
+  assert.deepEqual(rules(inNode), ['retired-kind']);
+  assert.ok(!kindOf('model:thing').startsWith('model'), 'model is no longer a reserved kind');
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['domains.yaml'].model = 'Data at rest.'; }))).sort(), ['domains', 'domains'],
+    'nor can a domain take the retired namespace back (and it is unused)');
+});
+
+test('shape:, tables: and pending: on a view are retired keys, each saying where the thing went', () => {
+  for (const [key, value, msg] of [
+    ['shape', { fields: { x: 'scalar' } }, /typed schema: — the legacy shape: block went with the models; storage lives in the migrations and Java models/],
+    ['tables', ['thing'], /storage is memorialized by the migrations and Java models/],
+    ['pending', { later: 'not built' }, /a view states current truth only/],
+  ]) {
+    const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'][key] = value; }));
+    assert.deepEqual(rules(errors), ['retired-key'], key);
+    assert.equal(errors[0].id, 'view:thing');
+    assert.match(errors[0].message, new RegExp(`^'${key}' is retired — `), key);
+    assert.match(errors[0].message, msg, key);
+  }
+});
+
+test('a view needs a typed schema, holds only its own keys, and consumes only views', () => {
+  const bare = errorsFor(edit((f) => { delete f['models/view.thing.yaml'].schema; }));
+  assert.deepEqual(rules(bare), ['schema-type']);
+  assert.match(bare[0].message, /a view carries a typed schema:/);
+  const unknown = errorsFor(edit((f) => { f['models/view.thing.yaml'].audience = 'everyone'; }));
+  assert.deepEqual(rules(unknown), ['unknown-key']);
+  assert.match(unknown[0].message, new RegExp(`a view holds only ${VIEW_KEYS.join(', ')}`));
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['models/view.thing.yaml'].links = { owns: ['thing'] }; }))), ['unknown-key']);
+  assert.deepEqual(errorsFor(edit((f) => {
+    Object.assign(f, TYPED());
+    f['models/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
+  })), [], 'consuming a view and grounding in a principle are both fine');
+  for (const target of ['model:thing', 'thing_table', 'view:gone', 'app:detail']) {
+    const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'].links = { consumes: [target] }; }));
+    assert.deepEqual(rules(errors), ['dangling'], target);
+    assert.match(errors[0].message, new RegExp(`consumes '${target}', which is no view record — a view consumes other views`), target);
+  }
+});
+
+test('ref<…> takes view: ids only — a model: ref says the kind is retired', () => {
+  const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'ref<model:thing> — the old pointer'; }));
+  assert.deepEqual(rules(errors), ['schema-type']);
+  assert.match(errors[0].message, /^schema\.at: ref<…> names 'model:thing' — models were retired for views/);
+  assert.match(errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'list<ref<app:detail>>'; }))[0].message,
+    /ref<…> takes one view: id/);
+});
+
+test('references on a decision resolve to view records, count, and ride the dump line', () => {
+  const withRefs = (refs) => edit((f) => {
+    Object.assign(f, TYPED());
+    f['product/app/sibling.yaml'].references = refs;
+  });
+  const good = storeOf(withRefs(['view:widget', 'view:thing']));
+  assert.deepEqual(validate(good), [], 'the structured key is the sanctioned channel — no model-in-decision fault');
+  assert.equal(storeCounts(good).references, 2);
+  assert.deepEqual(good.byId.get('app:sibling').references, ['view:widget', 'view:thing']);
+  const line = nodeLine(good, good.nodeByRel.get('product/app/sibling.yaml'));
+  assert.deepEqual(line.references, ['view:widget', 'view:thing']);
+  assert.ok(!('references' in nodeLine(storeOf(BASE()), storeOf(BASE()).nodeByRel.get('product/app/sibling.yaml'))),
+    'a decision without references carries no empty key');
+  for (const bad of [['view:gone'], ['app:detail'], ['view:thing', 'view:thing'], [], 'view:widget', [7], ['model:thing']]) {
+    const errors = errorsFor(withRefs(bad));
+    assert.deepEqual(rules(errors), ['references'], JSON.stringify(bad));
+  }
+  assert.match(errorsFor(withRefs(['model:thing']))[0].message, /'model:thing' — models were retired for views.*reference the view that carries it/);
+  assert.match(errorsFor(withRefs(['view:gone']))[0].message, /resolves to no view record/);
+  // the text rule is untouched: naming the view in prose is still a fault
+  const inText = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['product/app/sibling.yaml'].decision = 'Reads view:widget.'; }));
+  assert.deepEqual(rules(inText), ['model-in-decision']);
+});
+
+// --- {slug.field} tokens in decision text ------------------------------------------
+
+/** TYPED plus prose on app:sibling (and optionally explicit references). */
+const withText = (decision, { rejected, references } = {}) => edit((f) => {
+  Object.assign(f, TYPED());
+  const d = f['product/app/sibling.yaml'];
+  d.decision = decision;
+  if (rejected) d.rejected = rejected;
+  if (references) d.references = references;
+});
+
+test('a valid field token resolves, derives its view as a reference, and rides the dump line', () => {
+  const s = storeOf(withText('The widget is known by its {widget.name} and sized by {widget.size}.'));
+  assert.deepEqual(validate(s), [], 'a token is neither a model-in-decision nor an id-in-decision-text fault');
+  assert.equal(s.byId.get('app:sibling').references, undefined, 'the explicit key stays as written');
+  assert.deepEqual(effectiveReferences(s.byId.get('app:sibling')), ['view:widget']);
+  assert.equal(storeCounts(s).references, 1, 'two tokens on one view derive one reference');
+  assert.deepEqual(nodeLine(s, s.nodeByRel.get('product/app/sibling.yaml')).references, ['view:widget']);
+  assert.deepEqual(fieldTokens('{widget.name}'), [{ raw: '{widget.name}', slug: 'widget', field: 'name', view: 'view:widget' }]);
+});
+
+test('an unknown slug, an unknown field and a malformed token each fault token', () => {
+  const cases = [
+    ['Reads {gadget.name}.', /names view:gadget, which is no typed view/],
+    ['Reads {widget.colour}.', /view:widget has no field 'colour'/],
+    ['Reads {widget}.', /is not a field token/],
+    ['Reads {widget.}.', /is not a field token/],
+    ['Reads {.name}.', /is not a field token/],
+    ['Reads {widget.name.x}.', /is not a field token/],
+    ['Reads {widget. name}.', /is not a field token/],
+    ['Reads {}.', /is not a field token/],
+    ['Reads {Widget.name}.', /is not a field token/],
+  ];
+  for (const [text, msg] of cases) {
+    const errors = errorsFor(withText(text));
+    assert.deepEqual(rules(errors), ['token'], text);
+    assert.equal(errors[0].id, 'app:sibling');
+    assert.match(errors[0].message, msg, text);
+  }
+});
+
+test('a token in rejected text is validated the same way, and derives a reference too', () => {
+  const good = storeOf(withText('A plain rule.', { rejected: ['keying it by {widget.size} — lost'] }));
+  assert.deepEqual(validate(good), []);
+  assert.deepEqual(effectiveReferences(good.byId.get('app:sibling')), ['view:widget']);
+  const bad = errorsFor(withText('A plain rule.', { rejected: ['fine', 'keying it by {widget.weight}'] }));
+  assert.deepEqual(rules(bad), ['token']);
+  assert.match(bad[0].message, /^rejected\[1\]: .*no field 'weight'/);
+});
+
+test('explicit and token-derived references deduplicate in the count and the dump', () => {
+  const s = storeOf(withText('Sized by {widget.size}.', { references: ['view:thing', 'view:widget'] }));
+  assert.deepEqual(validate(s), []);
+  assert.deepEqual(effectiveReferences(s.byId.get('app:sibling')), ['view:thing', 'view:widget']);
+  assert.equal(storeCounts(s).references, 2);
+  const derivedOnly = storeOf(withText('Sized by {widget.size}.', { references: ['view:thing'] }));
+  assert.deepEqual(effectiveReferences(derivedOnly.byId.get('app:sibling')), ['view:thing', 'view:widget']);
+  assert.equal(storeCounts(derivedOnly).references, 2);
+});
+
+test('--check fails a bad token with a nonzero exit, and dump carries the derived reference', () => {
+  onDisk(withText('Sized by {widget.size}.'), (dir) => {
+    const r = check(dir);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /1 decision→view reference\(s\)/);
+    const d = lines(dump(dir, '--scope', 'app:sibling')).find((l) => l.node === 'product/app/sibling.yaml');
+    assert.equal(d.decision, 'Sized by {widget.size}.');
+    assert.deepEqual(d.references, ['view:widget']);
+  });
+  onDisk(withText('Sized by {widget.heft}.'), (dir) => {
+    const r = check(dir);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /app:sibling \[token\] decision: '\{widget\.heft\}'/);
+  });
+});
+
+test('--check reports views and references in its summary, and a bad type token exits nonzero', () => {
+  const files = TYPED();
+  files['product/app/sibling.yaml'].references = ['view:widget'];
+  onDisk(files, (dir) => {
+    const r = check(dir);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, / 2 views \(\d+ field→decision link\(s\) into 1 decision tree\(s\), \d+ unlinked field\(s\)\), 1 decision→view reference\(s\)/);
+    assert.doesNotMatch(r.stdout, /models|typed/, 'the summary speaks of views only');
+    const s = dump(dir, '--scope', 'app:sibling');
+    assert.deepEqual(lines(s).find((l) => l.node === 'product/app/sibling.yaml').references, ['view:widget']);
+  });
+  files['models/view.widget.yaml'].schema.fields.notes = 'blob';
+  onDisk(files, (dir) => {
+    const r = check(dir);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /view:widget \[schema-type\] schema\.notes: 'blob' is not a schema type/);
+  });
 });
 
 test('a domain namespace is usable once declared, and the declaration stays honest', () => {
@@ -412,7 +706,7 @@ test('a domain namespace is usable once declared, and the declaration stays hone
   assert.deepEqual(rules(errorsFor(edit((f) => { f['domains.yaml'].corpus = 'Not Kebab'; }))), ['domains']);
 });
 
-test('every capability has a root node — its first decision is the tree\'s purpose', () => {
+test('every capability has a root node — its decision is the tree\'s purpose', () => {
   const rootless = errorsFor(edit((f) => {
     f['capabilities/capc/only-c.yaml'] = f['capabilities/capc/self.yaml'];
     delete f['capabilities/capc/self.yaml'];
@@ -448,14 +742,14 @@ test('capability dependencies come from includes inside capability trees, and ar
 });
 
 test('reach overclaim is a warning on product decisions below the app root', () => {
-  const s = storeOf(edit((f) => { f['product/app/sibling.yaml'].decisions[0].decision = 'Holds in every tool.'; }));
+  const s = storeOf(edit((f) => { f['product/app/sibling.yaml'].decision = 'Holds in every tool.'; }));
   assert.deepEqual(validate(s), []);
   assert.deepEqual(warn(s).map((w) => [w.id, w.rule]), [['app:sibling', 'reach-overclaim']]);
-  assert.deepEqual(reachOverclaims({ ...s.byId.get('app:on-phone'), decision: 'everywhere' }), [], 'the app root reaches the whole app');
+  assert.deepEqual(reachOverclaims({ ...s.byId.get('story:app'), decision: 'everywhere' }), [], 'the app root reaches the whole app');
 });
 
 test('a directory beside the roots is an error, and a reappearing interactions/ says where events went', () => {
-  onDisk({ ...BASE(), 'adroit/x.yaml': node('X', [d('eng:x')]), 'interactions/y.yaml': 'a: 1\n' }, (dir) => {
+  onDisk({ ...BASE(), 'adroit/x.yaml': node('eng:x', 'X'), 'interactions/y.yaml': 'a: 1\n' }, (dir) => {
     const r = check(dir);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /adroit\/ \[root\] is not a ledger root/);
@@ -463,11 +757,14 @@ test('a directory beside the roots is an error, and a reappearing interactions/ 
   });
 });
 
-test('a file the YAML parser refuses names itself, rather than escaping as a stack trace', () => {
-  onDisk({ ...BASE(), 'product/app/broken.yaml': 'name: [unterminated\n' }, (dir) => {
+test('a file the YAML parser refuses names itself, and the rest of the ledger is still validated', () => {
+  onDisk({ ...BASE(), 'product/app/broken.yaml': 'name: [unterminated\n', 'engineering/also-broken.yaml': 'id: : x\n',
+    'product/app/sibling.yaml': { ...BASE()['product/app/sibling.yaml'], includes: ['nope'] } }, (dir) => {
     const r = check(dir);
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /^ledger: could not be read — \S*ledger\/product\/app\/broken\.yaml: line 1: unterminated flow sequence/);
+    assert.match(r.stderr, /product\/app\/broken\.yaml \[unreadable\] could not be parsed — line 1: unterminated flow sequence/);
+    assert.match(r.stderr, /engineering\/also-broken\.yaml \[unreadable\]/, 'every unreadable file is named, not only the first');
+    assert.match(r.stderr, /product\/app\/sibling\.yaml \[includes\]/, 'a fault in a readable file is still found');
   });
 });
 
@@ -512,7 +809,7 @@ test('the machine-local log is read beside the store, keyed by corpus, and valid
 
 test('citedIds resolves hyphenated and prose-fused ids, and nothing else', () => {
   const s = storeOf(BASE());
-  assert.deepEqual(citedIds('see model:thing and app:detail-ish, not app:none or V150', s.byId), ['model:thing', 'app:detail']);
+  assert.deepEqual(citedIds('see view:thing and app:detail-ish, not app:none or V150', s.byId), ['view:thing', 'app:detail']);
 });
 
 // ---------------------------------------------------------------------------
@@ -546,9 +843,9 @@ test('a diff against an unchanged store reports nothing, and exits 0', () => {
 test('the diff reports decisions added, deleted and re-worded, and nodes re-parented, renamed and re-wired', () => {
   gitFixture(BASE(), (dir, diff) => {
     const f = BASE();
-    f['product/app/sibling.yaml'].decisions[0].decision = 'A sibling rule, reworded.';
-    f['product/app/sibling.yaml'].decisions.push(d('app:brand-new'));
+    f['product/app/sibling.yaml'].decision = 'A sibling rule, reworded.';
     put(dir, 'product/app/sibling.yaml', f['product/app/sibling.yaml']);
+    put(dir, 'product/app/brand-new.yaml', node('app:brand-new', 'Brand new'));
     rmSync(join(dir, 'engineering/a-rule.yaml'));
     // re-parent: one-tool moves from under tools to the app root
     renameSync(join(dir, 'product/app/tools/one-tool'), join(dir, 'product/app/one-tool'));
@@ -567,25 +864,50 @@ test('the diff reports decisions added, deleted and re-worded, and nodes re-pare
   });
 });
 
-test('the diff reads the previous format at a ref, so it compares across the node-format change', () => {
+test('the diff reads the host-record format at a ref, so it compares across both format changes', () => {
   const legacy = {
     'domains.yaml': { corpus: 'fixture', app: 'The app.' },
     'product/app/self.yaml': {
       id: 'story:app', decision: 'A person runs the app.', rejected: [],
-      peers: { 'app:on-phone': { decision: 'Every surface works on a phone.', severable: true } },
-      links: { domain: 'app' }, context: { why: 'w' },
+      peers: { 'app:on-phone': { decision: 'Every surface works on a phone.' } },
+      links: { domain: 'app' }, context: 'w',
     },
-    'product/app/app.child.yaml': { id: 'app:child', decision: 'A child.', rejected: [], links: { domain: 'app' }, context: { why: 'c' } },
+    'product/app/app.child.yaml': { id: 'app:child', decision: 'A child.', rejected: [], links: { domain: 'app' }, context: 'c' },
   };
   gitFixture(legacy, (dir, diff) => {
-    put(dir, 'product/app/self.yaml', node('App', [d('story:app', 'A person runs the app.'),
-      d('app:on-phone', 'Every surface works on a phone.', { severable: true })], { context: { why: 'w' } }));
+    put(dir, 'product/app/self.yaml', node('story:app', 'App', { decision: 'A person runs the app.', context: 'w' }));
+    put(dir, 'product/app/on-phone.yaml', node('app:on-phone', 'On phone', { decision: 'Every surface works on a phone.' }));
     rmSync(join(dir, 'product/app/app.child.yaml'));
-    put(dir, 'product/app/child.yaml', node('Child', [d('app:child', 'A child.')], { context: { why: 'c' } }));
+    put(dir, 'product/app/child.yaml', node('app:child', 'Child', { decision: 'A child.', context: 'c' }));
     const r = diff();
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /SUMMARY: 0 decision\(s\) touched, 1 node\(s\) changed\./, 'no decision moved a word');
+    assert.match(r.stdout, /SUMMARY: 1 decision\(s\) touched, 1 node\(s\) changed\./, 'no decision moved a word — the peer only moved file');
+    assert.doesNotMatch(r.stdout, /decision text changed/);
+    assert.match(r.stdout, /~ app:on-phone\n {6}moved from node story:app to node app:on-phone/);
     assert.match(r.stdout, /~ app:child\n {6}file: product\/app\/app\.child\.yaml → product\/app\/child\.yaml/);
+  });
+});
+
+test('the diff reads the decision-list format at a ref: a split-out peer is a move, a hoisted leaf a path change', () => {
+  const listed = {
+    'domains.yaml': { corpus: 'fixture', app: 'The app.' },
+    'product/app/self.yaml': { name: 'App', decisions: [{ id: 'story:app', decision: 'A person runs the app.' },
+      { id: 'app:on-phone', decision: 'Every surface works on a phone.', rejected: ['desktop only'] }], context: 'why' },
+    'product/app/leaf.yaml': { name: 'Leaf', decisions: [{ id: 'app:leaf', decision: 'A leaf.' }, { id: 'app:leaf-peer', decision: 'Its peer.' }] },
+  };
+  gitFixture(listed, (dir, diff) => {
+    put(dir, 'product/app/self.yaml', node('story:app', 'App', { decision: 'A person runs the app.', context: 'why' }));
+    put(dir, 'product/app/on-phone.yaml', node('app:on-phone', 'On phone', { decision: 'Every surface works on a phone.', rejected: ['desktop only'] }));
+    rmSync(join(dir, 'product/app/leaf.yaml'));
+    put(dir, 'product/app/leaf/self.yaml', node('app:leaf', 'Leaf', { decision: 'A leaf.' }));
+    put(dir, 'product/app/leaf/leaf-peer.yaml', node('app:leaf-peer', 'Leaf peer', { decision: 'Its peer.' }));
+    const r = diff();
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /ADDED|DELETED|decision text changed|rejected (grew|shrank)/, 'no decision lost, gained or re-worded');
+    assert.match(r.stdout, /~ app:on-phone\n {6}moved from node story:app to node app:on-phone/);
+    assert.match(r.stdout, /~ app:leaf-peer\n {6}moved from node app:leaf to node app:leaf-peer/);
+    assert.match(r.stdout, /~ app:leaf\n {6}file: product\/app\/leaf\.yaml → product\/app\/leaf\/self\.yaml/);
+    assert.match(r.stdout, /SUMMARY: 2 decision\(s\) touched, 1 node\(s\) changed\./);
   });
 });
 
@@ -618,9 +940,10 @@ test('the hierarchy is the filesystem: nodes nest under their parent node, group
   assert.equal(root.name, 'App');
   assert.equal(root.dubious, true);
   assert.equal(root.questions, 1);
-  assert.deepEqual(root.children.map((c) => c.name), ['Sibling', 'Tools']);
-  assert.deepEqual(root.children[1].children[0].children.map((c) => c.key), ['product/app/tools/one-tool/detail.yaml']);
-  assert.equal(t.nodes, 11);
+  assert.equal(root.id, 'story:app');
+  assert.deepEqual(root.children.map((c) => c.name), ['On phone', 'Sibling', 'Tools']);
+  assert.deepEqual(root.children[2].children[0].children.map((c) => c.key), ['product/app/tools/one-tool/detail.yaml']);
+  assert.equal(t.nodes, 12);
 });
 
 test('a node\'s detail is whole — every field, the notes included, and what reaches it from above', () => {
@@ -628,14 +951,20 @@ test('a node\'s detail is whole — every field, the notes included, and what re
   const nd = nodeDetail(s, 'app:detail');
   assert.equal(nd.key, 'product/app/tools/one-tool/detail.yaml');
   assert.deepEqual(nd.inScope, ['capa', 'capb']);
-  assert.deepEqual(nd.severedHere, ['app:on-phone']);
   assert.deepEqual(nd.ancestors.map((a) => a.name), ['App', 'Tools', 'One tool']);
   const root = nodeDetail(s, 'product/app/self.yaml');
   assert.equal(root.dubious, 'the phone decision may no longer hold');
   assert.deepEqual(root.questions, ['does the free tier still bind?']);
-  assert.deepEqual(root.context, { why: 'the app root' });
-  assert.equal(root.decisions[1].severable, true);
-  assert.equal(nodeDetail(s, 'model:thing').model, true);
+  assert.deepEqual(root.context, 'the app root');
+  assert.equal(root.id, 'story:app');
+  assert.equal(root.decision, 'A person runs the app.');
+  assert.deepEqual(root.rejected, ['a second app']);
+  assert.ok(!('decisions' in root) && !('severed' in root) && !('severedHere' in nd));
+  const view = nodeDetail(s, 'view:thing');
+  assert.equal(view.view, true);
+  assert.deepEqual(view.fields, ['id: int', 'at: epoch'], 'a view\'s detail lists its typed fields');
+  assert.equal(view.decision, 'A thing as it crosses a boundary.');
+  assert.ok(!('tables' in view));
   assert.equal(nodeDetail(s, 'nope'), null);
 });
 
@@ -651,7 +980,7 @@ test('a capability reports the nodes that include it — from includes, not from
 
 test('search finds nodes by every word, across name and decisions', () => {
   const s = storeOf(BASE());
-  assert.deepEqual(search(s, { q: 'surface phone' }).map((n) => n.rel), ['product/app/self.yaml']);
+  assert.deepEqual(search(s, { q: 'surface phone' }).map((n) => n.rel), ['product/app/on-phone.yaml']);
   assert.deepEqual(search(s, { q: 'one tool' }).map((n) => n.rel), ['product/app/tools/one-tool/self.yaml']);
 });
 
@@ -669,20 +998,8 @@ test('the views\' assets are served from ui/ and from nowhere else', () => {
   assert.equal(resolveUiAsset('/api/tree'), null, 'only the ui/ route resolves here');
 });
 
-/** The synthetic store plus a view, so every explorer endpoint has something to show. */
-const WITH_VIEW = () => edit((f) => {
-  f['models/view.thing-card.yaml'] = { id: 'view:thing-card', decision: 'What a reader sees of a thing.',
-    shape: { fields: { 'id': 'scalar (app:detail) — the thing\'s key', 'age': 'derived (app:detail) — how old it is' } } };
-});
-
-test('the server answers every endpoint the explorer reads', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'adroit-ledger-'));
-  const dir = join(root, 'ledger');
-  for (const [rel, body] of Object.entries(WITH_VIEW())) {
-    mkdirSync(dirname(join(dir, rel)), { recursive: true });
-    writeFileSync(join(dir, rel), typeof body === 'string' ? body : emit(body));
-  }
-  const proc = spawn(process.execPath, [SERVER, '--port', '0', '--dir', dir], { stdio: ['ignore', 'pipe', 'pipe'] });
+test('the server answers every endpoint the explorer reads, against the live store', async () => {
+  const proc = spawn(process.execPath, [SERVER, '--port', '0'], { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     const base = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('server did not announce a port')), 20000);
@@ -698,19 +1015,20 @@ test('the server answers every endpoint the explorer reads', async () => {
 
     assert.match(await (await fetch(`${base}/`)).text(), /AdroitViews/, 'the shell loads the views');
     const c = await get('/api/check');
-    assert.deepEqual(c.errors, [], 'the store validates through the server too');
-    assert.ok(c.counts.nodes > 0 && c.counts.decisions >= c.counts.nodes);
+    assert.deepEqual(c.errors, [], 'the live store validates through the server too');
+    assert.ok(c.counts.nodes > 0 && c.counts.decisions === c.counts.nodes, 'one decision per node file');
 
     const tree = await get('/api/tree');
-    assert.deepEqual(tree.roots.map((r) => r.key), ['product', 'capabilities', 'engineering', 'models']);
-    const hq = tree.roots[0].children.find((g) => g.tree === 'product/app');
-    assert.equal(hq.children.length, 1, 'an app tree hangs off its root node');
-    assert.ok(hq.children[0].name && hq.children[0].children.length);
-    const someNode = hq.children[0].children[0];
+    const ROOTS = ['product', 'capabilities', 'engineering', 'models'];
+    assert.deepEqual(tree.roots.map((r) => r.key), ROOTS.filter((r) => existsSync(join(LEDGER, r))));
+    const app = tree.roots[0].children[0];
+    assert.equal(app.children.length, 1, 'an app tree hangs off its root node');
+    assert.ok(app.children[0].name && app.children[0].children.length);
+    const someNode = app.children[0].children[0];
 
     const nd = await get(`/api/node?key=${encodeURIComponent(someNode.key)}`);
     assert.equal(nd.key, someNode.key);
-    assert.ok(nd.decisions.length && nd.decisions.every((x) => x.id && x.decision));
+    assert.ok(nd.id && nd.decision && !('decisions' in nd));
     assert.ok(Array.isArray(nd.ancestors) && Array.isArray(nd.children) && Array.isArray(nd.inScope));
     assert.equal((await fetch(`${base}/api/node?key=nope`)).status, 404);
 
@@ -718,16 +1036,19 @@ test('the server answers every endpoint the explorer reads', async () => {
     assert.ok(hits.nodes.some((n) => n.key === someNode.key));
 
     const caps = await get('/api/capability');
-    assert.ok(caps.capabilities.length > 0 && caps.capabilities.every((x) => x.name && typeof x.nodes === 'number'));
+    if (caps.capabilities.length) {
+    assert.ok(caps.capabilities.every((x) => x.name && typeof x.nodes === 'number'));
     const one = await get(`/api/capability?name=${encodeURIComponent(caps.capabilities[0].name)}`);
     assert.ok(one.root && one.root.key === `capabilities/${one.name}/self.yaml` && one.root.name
-      && one.root.decisions.length && one.root.decisions.every((x) => x.id && x.decision));
+      && one.root.id && one.root.decision);
     assert.ok(Array.isArray(one.includersByTree) && Array.isArray(one.uses) && Array.isArray(one.usedBy));
+    }
     assert.equal((await fetch(`${base}/api/capability?name=nope`)).status, 404);
 
     const erd = await get('/api/erd');
-    assert.ok(erd.entities.length > 0 && erd.entities.some((e) => e.kind === 'view'));
-    assert.ok(erd.edges.every((e) => e.source && e.target && e.type));
+    assert.ok(erd.entities.every((e) => e.kind === 'view' && e.fields.length));
+    assert.ok(erd.edges.every((e) => e.source && e.target && ['ref', 'consumes'].includes(e.type)));
+    assert.ok(!('schema' in erd), 'the ERD is a catalog of views — no table mapping');
 
     const css = await fetch(`${base}/ui/views.css`);
     assert.equal(css.status, 200);
@@ -735,35 +1056,47 @@ test('the server answers every endpoint the explorer reads', async () => {
     assert.equal((await fetch(`${base}/ui/%2e%2e/server.mjs`)).status, 404);
   } finally {
     proc.kill();
-    rmSync(root, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 
 // ---------------------------------------------------------------------------
-// The schema the ERD draws its fields from
+// The ERD: a catalog of the views
 // ---------------------------------------------------------------------------
 
-test('a view declares its derivations in its shape fields; the statement convention is the fallback', () => {
-  const view = storeOf(WITH_VIEW()).records.find((r) => kindOf(r.id) === 'view' && r.shape?.fields);
-  assert.equal(tablesOf(view).length, 0, 'a view owns no table');
-  assert.ok(declaredDerivations(view).length > 0);
+test('a view declares its derivations in its schema fields; the statement convention is the fallback', () => {
+  const view = { id: 'view:widget', schema: { fields: { name: 'string — a name', total: 'derived<int> — the sum' } } };
+  assert.deepEqual(declaredDerivations(view), ['total']);
   assert.deepEqual(declaredDerivations({ decision: 'CLAIMED — has a live member; LIVE — one predicate.' }), ['CLAIMED', 'LIVE']);
   assert.deepEqual(declaredDerivations({ decision: 'NEVER store this. It is ALWAYS derived.' }), []);
 });
 
-test('the ERD marks a table the schema does not have instead of dropping it', () => {
-  const ctx = storeOf(edit((f) => {
-    f['models/model.thing.yaml'] = { ...f['models/model.thing.yaml'], tables: ['thing'] };
-    f['models/model.other.yaml'] = { id: 'model:other', decision: 'Another thing.', tables: ['gone'],
-      shape: { fields: { 'other.id': 'scalar (app:detail) — the key' } } };
+test('the ERD draws each view with its typed fields, and the ref and consumes edges between views', () => {
+  const s = storeOf(edit((f) => {
+    Object.assign(f, TYPED());
+    f['models/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
   }));
-  const erd = erdData(ctx, { tables: { thing: [{ name: 'id', type: 'BIGINT', nullable: false }] } });
-  const mapped = erd.entities.filter((e) => e.tables.length);
-  assert.ok(mapped.some((e) => e.tables.some((t) => t.found)), 'the stub table is found');
-  assert.ok(mapped.some((e) => e.unmapped.length), 'the tables the stub lacks are named, not silently gone');
-  const blind = erdData(ctx, null);
-  assert.equal(blind.schema.present, false);
-  assert.ok(blind.entities.every((e) => e.fields === 0));
+  const erd = erdData(s);
+  assert.deepEqual(Object.keys(erd), ['entities', 'edges'], 'no schema, no tables, no unclaimed list');
+  assert.deepEqual(erd.entities.map((e) => e.id), ['view:thing', 'view:widget']);
+  const widget = erd.entities.find((e) => e.id === 'view:widget');
+  assert.deepEqual(widget.fields.slice(0, 3), [{ name: 'name', type: 'string' }, { name: 'notes', type: 'text' }, { name: 'size', type: 'int' }]);
+  assert.deepEqual(widget.derivations, ['total', 'owner']);
+  assert.deepEqual(widget.consumers, ['product/app']);
+  assert.ok(erd.entities.every((e) => !('tables' in e) && !('unmapped' in e)));
+  const edges = erd.edges.map((e) => `${e.source}→${e.target} ${e.type}${e.field ? ` ${e.field}` : ''}`);
+  for (const want of ['view:widget→view:thing ref thing', 'view:widget→view:widget ref self', 'view:widget→view:thing ref owner',
+    'view:widget→view:widget ref parts', 'view:widget→view:thing ref slots', 'view:widget→view:thing consumes']) {
+    assert.ok(edges.includes(want), want);
+  }
+  assert.ok(!erd.edges.some((e) => e.type === 'grounds'), 'a principle is no box, so grounding draws no edge');
+});
+
+test('the committed migration schema dump is still well-formed (the dump tooling stands on its own)', () => {
+  const file = fileURLToPath(new URL('schema.json', import.meta.url));
+  if (!existsSync(file)) return;                // never regenerated here — nothing to check
+  const schema = JSON.parse(readFileSync(file, 'utf8'));
+  assert.ok(schema.tables.auditionNotice?.some((col) => col.name === 'id'), 'the schema really is the product schema');
+  assert.deepEqual(schema.failures, [], 'every migration statement executed');
 });
 
 test('a path names its tree, and a tree names its short name', () => {
