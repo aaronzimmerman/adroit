@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { parseYaml } from './adroit.js';
+import { decisionsOf, parseYaml } from './adroit.js';
 import { UNCOMMITTED } from './clock.js';
 
 const execFileP = promisify(execFile);
@@ -162,12 +162,12 @@ export class GitFacts {
     return 0;
   }
 
-  /** The text of one decision inside a node file's content; null when absent or unreadable. */
+  /** The text of one decision inside a node file's content, in whichever format that version of
+   * the file was written; null when absent or unreadable. */
   private static decisionOf(content: string | null, id: string): string | null {
     if (content === null) return null;
     try {
-      const doc = parseYaml(content) as { decisions?: { id?: unknown; decision?: unknown }[] } | null;
-      const d = Array.isArray(doc?.decisions) ? doc!.decisions.find((x) => x?.id === id) : undefined;
+      const d = decisionsOf(parseYaml(content)).find((x) => x.id === id);
       return typeof d?.decision === 'string' ? d.decision : null;
     } catch {
       return null;

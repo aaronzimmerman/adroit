@@ -7,17 +7,8 @@
 // refused change leaves the working tree exactly as it found it.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type {
-  ChangeOutcome,
-  ChangePreview,
-  ChangeRequest,
-  DecisionField,
-  NodeField,
-  Operation,
-  Suspect,
-} from '@adroit/shared';
+import type { ChangeOutcome, ChangePreview, ChangeRequest, NodeField, Operation, Removed, Suspect } from '@adroit/shared';
 import {
-  DECISION_KEYS,
   emitYaml,
   entryKind,
   NODE_KEYS,
@@ -28,7 +19,7 @@ import {
   type LibStore,
 } from './adroit.js';
 import { runGit } from './gitfacts.js';
-import { findingsOf, openLedger, PENDING_DIR, placeOfFile, storeOf, type Opened, type Unreadable } from './ledger.js';
+import { findingsOf, openLedger, placeOfFile, storeOf, type Opened, type Unreadable } from './ledger.js';
 import { descendantsOf, editReach } from './scope.js';
 
 /** A user-caused refusal, stated in the user's terms.
@@ -40,20 +31,11 @@ const isMap = (v: unknown): v is Doc => typeof v === 'object' && v !== null && !
 const oneLine = (s: unknown): s is string => typeof s === 'string' && s.trim() !== '' && !/[\r\n]/.test(s);
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
-/** Writes the tools' house style: a node's keys in their file order, each decision's too. */
+/** Writes the tools' house style: a node's keys in their file order. */
 function emitNode(raw: Doc): string {
   const ordered: Doc = {};
   for (const k of NODE_KEYS) if (raw[k] !== undefined) ordered[k] = raw[k];
   for (const [k, v] of Object.entries(raw)) if (!(k in ordered)) ordered[k] = v;
-  if (Array.isArray(ordered.decisions)) {
-    ordered.decisions = ordered.decisions.map((d) => {
-      if (!isMap(d)) return d;
-      const o: Doc = {};
-      for (const k of DECISION_KEYS) if (d[k] !== undefined) o[k] = d[k];
-      for (const [k, v] of Object.entries(d)) if (!(k in o)) o[k] = v;
-      return o;
-    });
-  }
   return emitYaml(ordered);
 }
 
@@ -66,8 +48,10 @@ class Plan {
   readonly origin = new Map<string, string>();
   /** Suspect node file -> the reasons it is suspect, each naming the node whose change did it. */
   readonly suspects = new Map<string, string[]>();
-  /** Node files this change itself writes or creates: worked by the commit, never marked. */
-  readonly worked = new Set<string>();
+  /** Node files this change itself writes or creates: read through by its author, never marked. */
+  readonly written = new Set<string>();
+  /** The nodes this change deletes, each with its decision. */
+  readonly removed: Removed[] = [];
   readonly describe: string[] = [];
   landedAt: string | undefined;
   private cached: LibStore | undefined;
@@ -75,7 +59,6 @@ class Plan {
   constructor(readonly opened: Opened) {
     this.files = new Map(opened.entries.map((e) => [e.rel, e.content]));
     for (const u of opened.unreadable) this.files.set(u.rel, u.content);
-    for (const p of opened.pending) this.files.set(p.rel, p.content);
     this.original = new Map(this.files);
     for (const n of opened.store.nodes) this.origin.set(n.rel, n.rel);
   }
@@ -97,9 +80,14 @@ class Plan {
     this.cached = undefined;
   }
 
+  remove(rel: string): void {
+    this.files.delete(rel);
+    this.cached = undefined;
+  }
+
   writeNode(rel: string, raw: Doc): void {
     this.write(rel, emitNode(raw));
-    this.worked.add(rel);
+    this.written.add(rel);
   }
 
   /** Move a file, or a directory and everything in it; every key tracking a file follows. */
@@ -120,10 +108,10 @@ class Plan {
         }
       }
     }
-    for (const k of [...this.worked]) {
+    for (const k of [...this.written]) {
       if (remap(k) !== k) {
-        this.worked.delete(k);
-        this.worked.add(remap(k));
+        this.written.delete(k);
+        this.written.add(remap(k));
       }
     }
     this.cached = undefined;
@@ -150,7 +138,12 @@ class Plan {
   }
 
   nameOf(rel: string): string {
-    const raw = parseYaml(this.files.get(rel) ?? '');
+    let raw: unknown;
+    try {
+      raw = parseYaml(this.files.get(rel) ?? '');
+    } catch {
+      raw = undefined; // an unreadable file is named by its place
+    }
     return isMap(raw) && typeof raw.name === 'string' ? raw.name : placeOfFile(rel);
   }
 }
@@ -179,8 +172,8 @@ function projected(files: Map<string, string>, opened: Opened): { store: LibStor
 // ---------------------------------------------------------------------------
 // Suspicion (ADROIT.md, Dubious)
 
-/** An edit of a node's decisions, includes, severed list or context casts suspicion over its
- * reach, each suspect naming the edited node.
+/** An edit of a node's decision, rejected, references, includes or context casts suspicion over
+ * its reach, each suspect naming the edited node.
  * @DecisionRef ui:change-shows-implications — the reach is measured from the tree. */
 function castEditSuspicion(plan: Plan, rel: string): void {
   const name = plan.nameOf(rel);
@@ -216,7 +209,7 @@ function clearMark(plan: Plan, rel: string, raw: Doc, clear: boolean | undefined
 function targetDir(plan: Plan, parent: string): { dir: string; treeRoot: boolean } {
   if (parent === '') throw new Refusal('choose a root or a node to place it beneath');
   if (parent === 'models' || parent.startsWith('models/')) {
-    throw new Refusal('the models directory holds models, not nodes');
+    throw new Refusal('the models directory holds views, not nodes');
   }
   if (parent === 'product' || parent === 'capabilities') return { dir: parent, treeRoot: true };
   if (parent === 'engineering') return { dir: parent, treeRoot: false };
@@ -272,14 +265,29 @@ function moveNode(plan: Plan, place: string, parent: string, base?: string): str
 // ---------------------------------------------------------------------------
 // The operations
 
+const text = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/** A list edited as lines: each entry trimmed, an emptied one dropped. */
+function listOf(v: unknown, refusal: string): string[] {
+  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) throw new Refusal(refusal);
+  return v.map((x) => x.trim()).filter(Boolean);
+}
+
+/** A list key is written when it holds something and dropped when it is emptied. */
+function setList(raw: Doc, key: string, v: string[]): void {
+  if (v.length) raw[key] = v;
+  else delete raw[key];
+}
+
+/**
+ * Edit one field of a node in place.
+ * @DecisionRef ui:all-but-id-editable — name, decision, rejected, references, includes, context
+ * and questions edit here, and the dubious mark by marking and confirming; the id never does.
+ */
 function editNode(plan: Plan, op: Extract<Operation, { op: 'edit-node' }>): void {
   let rel = plan.nodeAt(op.place);
   const raw = plan.read(rel);
   const field: NodeField = op.field;
-  const list = (v: unknown, what: string): string[] => {
-    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) throw new Refusal(`${what} must be a list of names`);
-    return v.map((x) => x.trim()).filter(Boolean);
-  };
   switch (field) {
     case 'name': {
       if (!oneLine(op.value)) throw new Refusal('a name is one non-empty line');
@@ -288,9 +296,9 @@ function editNode(plan: Plan, op: Extract<Operation, { op: 'edit-node' }>): void
       if (!slug) throw new Refusal(`"${name}" gives no file name — a name needs letters or digits`);
       raw.name = name;
       clearMark(plan, rel, raw, op.clearDubious);
-      // The file name is the name as a slug. A tree's root directory is the tree's own name
-      // (the name includes resolve), so it keeps its directory.
-      // @DecisionGap renaming a tree root's node leaves its directory, which names the tree.
+      // The file name is the name as a slug.
+      // @DecisionRef ui:tree-root-keeps-directory — a product or capability tree's root keeps its
+      // directory, which is the tree's name (the name includes resolve).
       const isDirNode = path.posix.basename(rel) === SELF;
       const src = isDirNode ? path.posix.dirname(rel) : rel;
       const treeRoot = isDirNode && /^(product|capabilities)\/[^/]+$|^engineering$/.test(src);
@@ -304,113 +312,94 @@ function editNode(plan: Plan, op: Extract<Operation, { op: 'edit-node' }>): void
       plan.describe.push(`rename ${placeOfFile(rel)}`);
       return;
     }
-    case 'includes':
-    case 'severed': {
-      const v = list(op.value, field === 'includes' ? 'includes' : 'severed');
-      if (v.length) raw[field] = v;
-      else delete raw[field];
+    case 'decision':
+      if (typeof op.value !== 'string' || !op.value.trim()) throw new Refusal('a decision states its rule — it cannot be empty');
+      raw.decision = op.value.trim();
       break;
-    }
+    case 'rejected':
+      setList(raw, 'rejected', listOf(op.value, 'rejected is a list of alternatives, each with why it lost'));
+      break;
+    case 'references':
+      setList(raw, 'references', listOf(op.value, 'references is a list of view ids'));
+      break;
+    case 'includes':
+      setList(raw, 'includes', listOf(op.value, 'includes is a list of capability names'));
+      break;
     case 'questions': {
       // An emptied line is dropped, never written empty.
-      const v = list(op.value, 'questions');
+      const v = listOf(op.value, 'questions is a list of lines');
       if (v.some((q) => /[\r\n]/.test(q))) throw new Refusal('each question is one line');
-      if (v.length) raw.questions = v;
-      else delete raw.questions;
+      setList(raw, 'questions', v);
       clearMark(plan, rel, raw, op.clearDubious);
       plan.describe.push(`questions on ${placeOfFile(rel)}`);
       // Asking, answering or dropping a question makes nothing suspect (ADROIT.md, Dubious).
       return;
     }
-    case 'context': {
-      if (typeof op.value !== 'string') throw new Refusal('context is written as YAML text');
+    case 'context':
+      // Context is one free-form text (ADROIT.md, The node).
+      if (typeof op.value !== 'string') throw new Refusal('context is free-form text');
       if (!op.value.trim()) delete raw.context;
-      else {
-        try {
-          raw.context = parseYaml(op.value);
-        } catch (e) {
-          throw new Refusal(`context is not readable: ${(e as Error).message}`);
-        }
-      }
+      else raw.context = op.value.replace(/\s+$/, '');
       break;
-    }
     default:
-      // @DecisionRef ui:all-but-id-editable — a decision's id is never among the editable fields.
-      throw new Refusal(`"${String(field)}" is not an editable field of a node`);
+      throw new Refusal(`"${String(field)}" is not an editable field of a node — its id is fixed`);
   }
   clearMark(plan, rel, raw, op.clearDubious);
   plan.describe.push(`edit ${field} of ${placeOfFile(rel)}`);
   castEditSuspicion(plan, rel);
 }
 
-function editDecision(plan: Plan, op: Extract<Operation, { op: 'edit-decision' }>): void {
-  const rel = plan.nodeAt(op.place);
-  const raw = plan.read(rel);
-  const entry = (Array.isArray(raw.decisions) ? raw.decisions : []).find((d) => isMap(d) && d.id === op.id);
-  if (!isMap(entry)) throw new Refusal(`${op.id} is not a decision of ${op.place}`);
-  const field: DecisionField = op.field;
-  if (field === 'decision') {
-    if (typeof op.value !== 'string' || !op.value.trim()) throw new Refusal('a decision states its rule — it cannot be empty');
-    entry.decision = op.value.trim();
-  } else if (field === 'rejected') {
-    if (!Array.isArray(op.value) || !op.value.every((x) => typeof x === 'string')) {
-      throw new Refusal('rejected is a list of alternatives, each with why it lost');
-    }
-    const v = op.value.map((x: string) => x.trim()).filter(Boolean);
-    if (v.length) entry.rejected = v;
-    else delete entry.rejected;
-  } else if (field === 'severable') {
-    if (typeof op.value !== 'boolean') throw new Refusal('severable is yes or no');
-    if (op.value) entry.severable = true;
-    else delete entry.severable;
-  } else {
-    throw new Refusal(`"${String(field)}" is not an editable field of a decision — a decision's id is fixed`);
-  }
-  clearMark(plan, rel, raw, op.clearDubious);
-  plan.describe.push(`edit ${op.id} ${field}`);
-  castEditSuspicion(plan, rel);
-}
-
-function addDecision(plan: Plan, op: Extract<Operation, { op: 'add-decision' }>): void {
-  const rel = plan.nodeAt(op.place);
-  const raw = plan.read(rel);
-  const e = op.entry;
-  if (!e || typeof e.id !== 'string' || typeof e.decision !== 'string' || !e.decision.trim()) {
-    throw new Refusal('a new decision needs an id and its rule');
-  }
-  const entry: Doc = { id: e.id.trim(), decision: e.decision.trim() };
-  const rejected = (e.rejected ?? []).map((x) => x.trim()).filter(Boolean);
-  if (rejected.length) entry.rejected = rejected;
-  if (e.severable) entry.severable = true;
-  raw.decisions = [...(Array.isArray(raw.decisions) ? raw.decisions : []), entry];
-  clearMark(plan, rel, raw, op.clearDubious);
-  plan.describe.push(`add ${entry.id} to ${placeOfFile(rel)}`);
-  castEditSuspicion(plan, rel);
-}
-
+/** @DecisionRef ui:create-a-node — a one-decision node, in its place in the tree. */
 function createNode(plan: Plan, op: Extract<Operation, { op: 'create-node' }>): void {
   const doc = op.doc;
   if (!doc || !oneLine(doc.name)) throw new Refusal('a node needs a one-line name');
+  if (!oneLine(doc.id)) throw new Refusal('a node needs its decision\'s id, on one line');
+  if (typeof doc.decision !== 'string' || !doc.decision.trim()) throw new Refusal('a decision states its rule — it cannot be empty');
   const slug = slugOf(doc.name);
   if (!slug) throw new Refusal(`"${doc.name}" gives no file name — a name needs letters or digits`);
   const { dir, treeRoot } = targetDir(plan, op.parent);
   const rel = treeRoot ? `${dir}/${slug}/${SELF}` : `${dir}/${slug}.yaml`;
   assertFree(plan, treeRoot ? `${dir}/${slug}` : rel, treeRoot ? `${dir}/${slug}.yaml` : `${dir}/${slug}`);
-  const raw: Doc = {
-    name: doc.name.trim(),
-    decisions: (doc.decisions ?? []).map((d) => ({
-      id: d.id?.trim(),
-      decision: d.decision?.trim(),
-      ...((d.rejected ?? []).filter((x) => x.trim()).length ? { rejected: d.rejected!.map((x) => x.trim()).filter(Boolean) } : {}),
-      ...(d.severable ? { severable: true } : {}),
-    })),
-  };
-  for (const k of ['includes', 'severed', 'questions'] as const) if (doc[k]?.length) raw[k] = doc[k];
-  if (doc.context !== undefined) raw.context = doc.context;
+  const raw: Doc = { id: doc.id.trim(), name: doc.name.trim(), decision: doc.decision.trim() };
+  if (doc.rejected !== undefined) setList(raw, 'rejected', listOf(doc.rejected, 'rejected is a list of alternatives, each with why it lost'));
   plan.writeNode(rel, raw);
   plan.origin.set(rel, rel);
   plan.landedAt = placeOfFile(rel);
   plan.describe.push(`create ${placeOfFile(rel)}`);
+}
+
+/**
+ * Delete a node and everything nested beneath it; each node removed is listed with its decision.
+ * @DecisionRef ui:delete-a-node — the whole subtree goes; nothing is re-parented.
+ * @DecisionRef ui:deletion-shows-everything-lost — the plan records every node and decision lost.
+ * Deleting inside a capability makes its includers suspect (ADROIT.md, Dubious).
+ */
+function deleteNode(plan: Plan, op: Extract<Operation, { op: 'delete-node' }>): void {
+  const rel = plan.nodeAt(op.place);
+  const store = plan.store();
+  const src = path.posix.basename(rel) === SELF ? path.posix.dirname(rel) : rel;
+  const gone = (f: string) => f === src || f.startsWith(`${src}/`);
+  const name = plan.nameOf(rel);
+  const decisionOf = new Map(store.records.filter((r) => r._node).map((r) => [r._node!, r]));
+  for (const f of [...plan.files.keys()].filter(gone).sort()) {
+    if (entryKind(`ledger/${f}`) !== 'node') continue;
+    const n = store.nodeByRel.get(f);
+    plan.removed.push({
+      place: placeOfFile(plan.origin.get(f) ?? f),
+      name: plan.nameOf(f),
+      id: n?.id ?? '',
+      decision: text(decisionOf.get(f)?.decision),
+    });
+  }
+  for (const [suspect, why] of editReach(store, rel)) {
+    if (why.kind === 'includer' && !gone(suspect)) {
+      plan.suspect(suspect, `capability ${why.capability} lost "${name}" (${placeOfFile(rel)})`);
+    }
+  }
+  const parent = store.nodeByRel.get(rel)?.parent;
+  for (const f of [...plan.files.keys()].filter(gone)) plan.remove(f);
+  plan.landedAt = parent ? placeOfFile(parent) : path.posix.dirname(src);
+  plan.describe.push(`delete ${op.place}`);
 }
 
 function markDubious(plan: Plan, op: Extract<Operation, { op: 'mark-dubious' }>): void {
@@ -439,108 +428,14 @@ function confirm(plan: Plan, op: Extract<Operation, { op: 'confirm' }>): void {
   plan.describe.push(`confirm ${placeOfFile(rel)}`);
 }
 
-// --- the model operations: they make nothing suspect (ADROIT.md, Dubious) ------------------
-
-function modelFile(plan: Plan, id: string): { rel: string; raw: Doc } {
-  const rec = plan.store().records.find((r) => r.id === id && r._tree === 'models');
-  if (!rec) throw new Refusal(`there is no model ${id}`);
-  return { rel: rec._rel, raw: plan.read(rec._rel) };
-}
-
-const pendingChanges = (plan: Plan) =>
-  [...plan.files]
-    .filter(([rel]) => rel.startsWith(`${PENDING_DIR}/`))
-    .map(([rel, content]) => ({ rel, doc: parseYaml(content) as Doc }));
-
-/** @DecisionGap the ledger lets a user set a field's intended definition but says nothing of
- * retiring a deployed field; an intended definition is always a definition, so a removal cannot
- * be pended from the UI. */
-function setModelField(plan: Plan, op: Extract<Operation, { op: 'set-model-field' }>): void {
-  const { rel, raw } = modelFile(plan, op.model);
-  if (!oneLine(op.field)) throw new Refusal('name the field');
-  if (!oneLine(op.intended)) throw new Refusal('the intended definition is one non-empty line');
-  const inFlight = pendingChanges(plan).find(({ doc }) =>
-    (Array.isArray(doc.operations) ? doc.operations : []).some((o) => isMap(o) && o.model === op.model && o.field === op.field),
-  );
-  if (inFlight) throw new Refusal(`${op.model} ${op.field} is already in migration ${String(inFlight.doc.name)}`);
-  const shape = isMap(raw.shape) ? raw.shape : {};
-  const fields = isMap(shape.fields) ? shape.fields : {};
-  if (fields[op.field] === op.intended.trim()) throw new Refusal(`${op.field} is already deployed that way`);
-  shape.pending = { ...(isMap(shape.pending) ? shape.pending : {}), [op.field]: op.intended.trim() };
-  raw.shape = shape;
-  plan.write(rel, emitYaml(raw));
-  plan.describe.push(`pend ${op.model} ${op.field}`);
-}
-
-function beginMigration(plan: Plan, op: Extract<Operation, { op: 'begin-migration' }>): void {
-  if (!KEBAB.test(op.name ?? '')) throw new Refusal('a migration is named in lowercase kebab words');
-  if (pendingChanges(plan).some(({ doc }) => doc.name === op.name)) {
-    throw new Refusal(`a pending change named ${op.name} is already open`);
-  }
-  if (!Array.isArray(op.entries) || op.entries.length === 0) throw new Refusal('a migration begins from at least one pending entry');
-  const origin = (op.origin ?? []).map((x) => x.trim()).filter(Boolean);
-  if (origin.length === 0) throw new Refusal('name the decisions whose ruling requires this migration');
-  for (const id of origin) {
-    if (!plan.store().byId.get(id)?._node) throw new Refusal(`${id} is not a decision in this ledger`);
-  }
-  const operations: Doc[] = [];
-  for (const { model, field } of op.entries) {
-    const { rel, raw } = modelFile(plan, model);
-    const shape = isMap(raw.shape) ? raw.shape : {};
-    const pending = isMap(shape.pending) ? { ...shape.pending } : {};
-    if (typeof pending[field] !== 'string') throw new Refusal(`${model} ${field} has no pending entry`);
-    const fields = isMap(shape.fields) ? shape.fields : {};
-    operations.push({
-      model,
-      field,
-      ...(typeof fields[field] === 'string' ? { deployed: fields[field] } : {}),
-      intended: pending[field],
-    });
-    // Each entry lives in one place at a time: it leaves the model file.
-    delete pending[field];
-    if (Object.keys(pending).length) shape.pending = pending;
-    else delete shape.pending;
-    raw.shape = shape;
-    plan.write(rel, emitYaml(raw));
-  }
-  // @DecisionGap ADROIT.md gives a pending change a state without naming its values; chosen:
-  // a begun migration's state is "begun".
-  plan.write(`${PENDING_DIR}/${op.name}.yaml`, emitYaml({ name: op.name, origin, operations, state: 'begun' }));
-  plan.describe.push(`begin migration ${op.name}`);
-}
-
-function landMigration(plan: Plan, op: Extract<Operation, { op: 'land-migration' }>): void {
-  const change = pendingChanges(plan).find(({ doc }) => doc.name === op.name);
-  if (!change) throw new Refusal(`no migration named ${op.name} is in flight`);
-  const operations = Array.isArray(change.doc.operations) ? change.doc.operations.filter(isMap) : [];
-  if (operations.length === 0) throw new Refusal(`migration ${op.name} carries no field changes`);
-  for (const o of operations) {
-    const { rel, raw } = modelFile(plan, String(o.model));
-    const shape = isMap(raw.shape) ? raw.shape : {};
-    const fields = isMap(shape.fields) ? { ...shape.fields } : {};
-    if ((fields[String(o.field)] ?? undefined) !== (o.deployed ?? undefined)) {
-      throw new Refusal(`the deployed shape of ${String(o.model)} ${String(o.field)} changed since migration ${op.name} began`);
-    }
-    fields[String(o.field)] = o.intended;
-    shape.fields = fields;
-    raw.shape = shape;
-    plan.write(rel, emitYaml(raw));
-  }
-  plan.files.delete(change.rel);
-  plan.describe.push(`land migration ${op.name}`);
-}
-
 function apply(plan: Plan, op: Operation): void {
   switch (op?.op) {
     case 'edit-node':
       return editNode(plan, op);
-    case 'edit-decision':
-      return editDecision(plan, op);
-    case 'add-decision':
-      return addDecision(plan, op);
     case 'create-node':
-      // @DecisionRef ui:create-a-node — a node is created in its place in the tree.
       return createNode(plan, op);
+    case 'delete-node':
+      return deleteNode(plan, op);
     case 'move-node':
       moveNode(plan, op.place, op.newParent);
       plan.describe.push(`move ${op.place} beneath ${op.newParent}`);
@@ -578,18 +473,6 @@ function apply(plan: Plan, op: Operation): void {
       return markDubious(plan, op);
     case 'confirm':
       return confirm(plan, op);
-    case 'set-model-field':
-      // @DecisionRef ui:set-model-field — the intended definition is a pending entry beside
-      // the deployed one, which stays as it is.
-      return setModelField(plan, op);
-    case 'begin-migration':
-      // @DecisionRef ui:begin-migration — the named entries move off the model files into one
-      // pending change.
-      return beginMigration(plan, op);
-    case 'land-migration':
-      // @DecisionRef ui:land-migration — the person's attestation: the models take the intended
-      // shapes and the pending change is deleted, in one act.
-      return landMigration(plan, op);
     default:
       throw new Refusal(`unknown operation ${JSON.stringify((op as { op?: unknown })?.op)}`);
   }
@@ -605,8 +488,8 @@ function planChange(dir: string, req: ChangeRequest): Plan {
   for (const op of req.operations) apply(p, op);
   // @DecisionRef ui:commit-validates-first — the change is held to the check's rules before it
   // is written.
-  // @DecisionGap the check fails a ledger on any error; the UI refuses only errors the change
-  // itself introduces, so a ledger opened broken can still be repaired one change at a time.
+  // @DecisionRef ui:refuse-only-new-errors — only errors the change itself introduces refuse it,
+  // so a ledger opened broken can be repaired one change at a time.
   const after = projected(p.files, opened);
   const before = new Set(opened.findings.filter((f) => f.severity === 'error').map(findingKey));
   const introduced = findingsOf(after.store, after.unreadable).filter((f) => f.severity === 'error' && !before.has(findingKey(f)));
@@ -620,7 +503,7 @@ function planChange(dir: string, req: ChangeRequest): Plan {
 function suspectsOf(p: Plan): Suspect[] {
   const nodes = new Set(p.store().nodes.map((n) => n.rel));
   return [...p.suspects]
-    .filter(([rel]) => nodes.has(rel) && !p.worked.has(rel))
+    .filter(([rel]) => nodes.has(rel) && !p.written.has(rel))
     .map(([rel, reasons]) => ({
       place: placeOfFile(rel),
       readAt: placeOfFile(p.origin.get(rel) ?? rel),
@@ -630,11 +513,12 @@ function suspectsOf(p: Plan): Suspect[] {
     .sort((a, b) => a.place.localeCompare(b.place));
 }
 
-/** What a change would do — its suspects and the files it writes — with nothing written.
- * @DecisionRef ui:walk-the-suspect-set — the walk reads this set before the commit. */
+/** What a change would do — its suspects, what it deletes and the files it writes — with
+ * nothing written.
+ * @DecisionRef ui:suspect-set-shown — the set the UI shows before the commit. */
 export function previewChange(dir: string, req: ChangeRequest): ChangePreview {
   const p = planChange(dir, req);
-  return { suspects: suspectsOf(p), touched: touchedOf(p) };
+  return { suspects: suspectsOf(p), removed: p.removed, touched: touchedOf(p) };
 }
 
 function touchedOf(p: Plan): string[] {
@@ -645,21 +529,17 @@ function touchedOf(p: Plan): string[] {
 }
 
 /**
- * Plan, check, write and commit a change. The suspects the user did not work are marked
- * dubious by this same commit, each naming the node whose change made it suspect.
- * @DecisionRef ui:commit-never-gated — the commit lands over an unworked suspect set.
- * @DecisionRef ui:unworked-suspects-marked — the marks are written into the suspects' files.
- * @DecisionGap a suspect the walk confirmed is only left unmarked; a mark it already carried from
- * an earlier change stays until it is confirmed on its own.
+ * Plan, check, write and commit a change. Every suspect is marked dubious by this same commit,
+ * each naming the node whose change made it suspect.
+ * @DecisionRef ui:commit-never-gated — the commit lands whatever the suspect set holds.
+ * @DecisionRef ui:commit-marks-suspects — the marks are written into the suspects' files.
  */
 export async function applyChange(dir: string, repo: string | null, req: ChangeRequest): Promise<ChangeOutcome> {
   if (!repo) throw new Refusal('this ledger is not inside a git repository, and changes land as commits');
   const p = planChange(dir, req);
   const suspects = suspectsOf(p);
-  const worked = new Set(req.worked ?? []);
   const marked: string[] = [];
   for (const s of suspects) {
-    if (worked.has(s.place)) continue;
     const rel = p.nodeAt(s.place);
     const raw = p.read(rel);
     raw.dubious = withReason(raw.dubious, s.reason);
@@ -718,6 +598,7 @@ export async function applyChange(dir: string, repo: string | null, req: ChangeR
     commit,
     touched,
     suspects,
+    removed: p.removed,
     marked,
     ...(p.landedAt !== undefined ? { landedAt: p.landedAt } : {}),
   };

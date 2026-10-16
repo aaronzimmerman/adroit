@@ -12,9 +12,11 @@ export interface LibNode {
   tree: string;
   parent: string | null;
   name: unknown;
+  /** Its one decision's id; absent when the file names none. */
+  id: string | undefined;
+  /** That id as a list — several only for a file in a retired format. */
   ids: string[];
   includes: string[];
-  severed: string[];
   dubious: unknown;
   questions: unknown;
   context: unknown;
@@ -26,8 +28,9 @@ export interface LibRecord {
   id: string;
   decision?: unknown;
   rejected?: unknown;
-  severable?: unknown;
-  shape?: unknown;
+  references?: unknown;
+  /** A view's typed schema. */
+  schema?: unknown;
   _rel: string;
   _tree: string;
   _node?: string;
@@ -61,11 +64,19 @@ interface LibFinding {
 
 interface NodeIndex {
   ancestorsOf(n: LibNode | string): LibNode[];
-  severedFor(n: LibNode | string): Set<string>;
   includedFor(n: LibNode | string): Set<string>;
   capabilityClosure(names: Iterable<string>): Set<string>;
   nodesOfCapability(name: string): LibNode[];
 }
+
+/** One field citation: a view's field and a decision id it cites. */
+interface ShapeEdge {
+  model: string;
+  field: string;
+  ruling: string;
+}
+
+type SchemaField = { type: string; refs: string[]; meaning: string } | { error: string };
 
 interface Lib {
   buildStore(entries: LibEntry[]): LibStore;
@@ -75,11 +86,14 @@ interface Lib {
   nodeIndex(store: LibStore): NodeIndex;
   corpusNameOf(store: LibStore, dir: string): string;
   slugOf(name: string): string;
-  shapeIndex(store: LibStore): { edges: { model: string; field: string; ruling: string; section: string }[] };
-  TREE_ROOTS: string[];
+  decisionsOf(raw: unknown): { id: string; decision: unknown }[];
+  effectiveReferences(rec: LibRecord | undefined): string[];
+  shapeIndex(store: Pick<LibStore, 'records' | 'byId'>): { edges: ShapeEdge[]; dangling: ShapeEdge[] };
+  parseSchemaField(raw: unknown): SchemaField;
+  viewLinks(rec: LibRecord): ['consumes' | 'grounds', string][];
   ROOT_ORDER: string[];
+  TREE_ROOTS: string[];
   NODE_KEYS: string[];
-  DECISION_KEYS: string[];
   SELF: string;
   CORPUS_KEY: string;
 }
@@ -103,11 +117,14 @@ export const {
   nodeIndex,
   corpusNameOf,
   slugOf,
+  decisionsOf,
+  effectiveReferences,
   shapeIndex,
+  parseSchemaField,
+  viewLinks,
   TREE_ROOTS,
   ROOT_ORDER,
   NODE_KEYS,
-  DECISION_KEYS,
   SELF,
   CORPUS_KEY,
 } = lib;

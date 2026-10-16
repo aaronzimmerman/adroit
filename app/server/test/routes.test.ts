@@ -7,13 +7,7 @@ import { commitAll, ledgerOf, makeFixtureRepo, rmFixture, write } from './fixtur
 
 let repo: string;
 beforeEach(() => {
-  repo = makeFixtureRepo({
-    'models/model.widget.yaml': {
-      id: 'model:widget',
-      decision: 'One widget at rest.',
-      shape: { fields: { name: 'scalar (app:parent-rule) — the widget name' }, pending: { colour: 'scalar — its hue' } },
-    },
-  });
+  repo = makeFixtureRepo();
 });
 afterEach(() => rmFixture(repo));
 
@@ -22,19 +16,21 @@ const search = async (q: string): Promise<SearchHit[]> =>
   (await request(app()).get(`/api/search?q=${encodeURIComponent(q)}`)).body.hits;
 
 describe('search', () => {
-  // @DecisionRef ui:search-any-text — rejected text, context, model fields and pending entries.
-  it('finds any text: a rejected alternative, context, a model field, a pending entry', async () => {
-    expect((await search('too chaotic'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'app:parent-rule · rejected 1' });
-    expect((await search('because'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'context.why' });
-    expect((await search('widget name')).map((h) => h.place)).toContain('models/model.widget.yaml');
-    expect((await search('hue'))[0]).toMatchObject({ place: 'models/model.widget.yaml', field: 'field colour · intended' });
+  // @DecisionRef ui:search-any-text — names, decision text, rejected text, context, a view's
+  // field names, and ids.
+  it('finds any text: a rejected alternative, context, a view\'s field name, a question', async () => {
+    expect((await search('too chaotic'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'rejected 1' });
+    expect((await search('know'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'context' });
+    expect((await search('parts'))[0]).toMatchObject({ place: 'models/widget.yaml', field: 'field parts' });
+    expect((await search('widget name')).map((h) => h.place)).toContain('models/widget.yaml');
+    expect((await search('Quiet hours'))[0]).toMatchObject({ place: 'capabilities/notify/quiet-hours.yaml', field: 'name' });
     expect((await search('accounts'))[0]).toMatchObject({ place: 'product/demo', field: 'question 1' });
   });
 
   // @DecisionRef ui:no-privileged-id-lookup — a pasted id matches as text, like anything else.
   it('a pasted id finds its decision because its text matches', async () => {
     const hits = await search('app:deep-leaf');
-    expect(hits[0]).toMatchObject({ place: 'product/demo/parent-rule/online-only/deep-leaf.yaml', field: 'app:deep-leaf · id' });
+    expect(hits[0]).toMatchObject({ place: 'product/demo/parent-rule/online-only/deep-leaf.yaml', field: 'id' });
   });
 
   // @DecisionRef ui:hit-shows-its-place — the trail of places above the hit.
@@ -75,7 +71,7 @@ describe('routes', () => {
   // @DecisionRef eng:refusal-explains-itself — a refusal arrives as 422 with its reason.
   it('previews and lands a change, and a refusal explains itself', async () => {
     const a = app();
-    const op = { op: 'edit-decision', place: 'product/demo/parent-rule', id: 'app:parent-rule', field: 'decision', value: 'Kinder.' };
+    const op = { op: 'edit-node', place: 'product/demo/parent-rule', field: 'decision', value: 'Kinder.' };
     const preview = await request(a).post('/api/change/preview').send({ operations: [op] });
     expect(preview.body.suspects).toHaveLength(3);
     const landed = await request(a).post('/api/change').send({ operations: [op] });
@@ -95,7 +91,7 @@ describe('the code lens', () => {
     write(repo, 'src/widget.ts', [cite, 'export const w = 1;', ''].join('\n'));
     commitAll(repo, 'code', Math.floor(Date.now() / 1000) - 5000);
     const a = app();
-    await request(a).post('/api/change').send({ operations: [{ op: 'edit-decision', place: 'product/demo/parent-rule', id: 'app:parent-rule', field: 'decision', value: 'Kinder.' }] });
+    await request(a).post('/api/change').send({ operations: [{ op: 'edit-node', place: 'product/demo/parent-rule', field: 'decision', value: 'Kinder.' }] });
     let res = await request(a).get('/api/lens?id=app:parent-rule');
     expect(res.body.citations).toHaveLength(1);
     expect(res.body.citations[0]).toMatchObject({ file: 'src/widget.ts', line: 1, changedSinceDecision: false, diff: '' });

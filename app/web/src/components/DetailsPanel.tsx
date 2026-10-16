@@ -1,8 +1,8 @@
 import { useLedger } from '../context.js';
 import { FindingsHere } from './Findings.jsx';
-import { ModelDetails, PendingChangeDetails } from './ModelDetails.jsx';
 import { Children, NodeDetails } from './NodeDetails.jsx';
 import { Structure } from './Structure.jsx';
+import { ViewDetails } from './ViewDetails.jsx';
 
 /**
  * The right panel: whatever is current, with the findings placed on it first.
@@ -17,9 +17,8 @@ export function DetailsPanel({ current }: { current: string }) {
     <aside className="details-panel" aria-label="details">
       <FindingsHere place={current} />
       {place.node && <NodeDetails place={current} node={place.node} />}
-      {place.model && <ModelDetails model={place.model} />}
-      {place.change && <PendingChangeDetails change={place.change} />}
-      {!place.node && !place.model && !place.change && (
+      {place.view && <ViewDetails record={place.view} />}
+      {!place.node && !place.view && (
         <article>
           <h2>{place.label}</h2>
           <p className="muted">{place.path || view.dir}</p>

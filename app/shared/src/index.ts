@@ -1,57 +1,23 @@
-// @DecisionRef eng:shapes-typed-once — the node and model shapes are declared here once and
+// @DecisionRef eng:shapes-typed-once — the node and view shapes are declared here once and
 // imported by both the server and the view across the boundary.
 // @DecisionRef eng:typescript-end-to-end — one language on both sides of that boundary.
 
 // ---------------------------------------------------------------------------
-// At rest: the files a ledger holds (ADROIT.md, The node; Models)
+// At rest: the files a ledger holds (ADROIT.md, The node; Views)
 
-/** One peer decision of a node. */
-export interface DecisionEntry {
+/** A node file: one decision, with its keys in file order. */
+export interface NodeDoc {
   id: string;
+  name: string;
   decision: string;
   rejected?: string[];
-  severable?: boolean;
-}
-
-/** A node file: a name and its peer decisions, plus the optional keys, in file order. */
-export interface NodeDoc {
-  name: string;
-  decisions: DecisionEntry[];
+  /** The views this decision governs, as the file lists them. */
+  references?: string[];
   includes?: string[];
-  severed?: string[];
   dubious?: string;
   questions?: string[];
+  /** One free-form text; an older file may still hold a mapping. */
   context?: unknown;
-}
-
-/** A model or view file under models/: its own format, not a node. */
-export interface ModelDoc {
-  id: string;
-  decision: string;
-  shape?: {
-    /** Field name -> its deployed definition (kind, cited decision ids, meaning). */
-    fields?: Record<string, string>;
-    /** Field name -> its intended definition, recorded beside the deployed one. */
-    pending?: Record<string, string>;
-  };
-  [other: string]: unknown;
-}
-
-/** One field change a pending change carries. */
-export interface PendingOperation {
-  model: string;
-  field: string;
-  /** The deployed definition it replaces; absent when the field is new. */
-  deployed?: string;
-  intended: string;
-}
-
-/** A migration in flight, one file under models/pending-changes/. */
-export interface PendingChangeDoc {
-  name: string;
-  origin: string[];
-  operations: PendingOperation[];
-  state: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,19 +25,18 @@ export interface PendingChangeDoc {
 // derives from disk — everything below arrives from the server).
 
 /** A place in the ledger directory: the hierarchy IS the filesystem. */
-export type PlaceKind = 'root' | 'dir' | 'node' | 'model' | 'pending-change' | 'file';
+export type PlaceKind = 'root' | 'dir' | 'node' | 'view' | 'file';
 
 export interface Place {
   /** Ledger-relative path: a directory node's directory, a leaf's file; '' is the ledger itself. */
   path: string;
   kind: PlaceKind;
-  /** The node's name, the model's id, or the file or directory name. */
+  /** The node's name, the view's id, or the file or directory name. */
   label: string;
   parent: string | null;
   children: string[];
   node?: NodeView;
-  model?: ModelView;
-  change?: PendingChangeDoc;
+  view?: ViewRecord;
   /** A file the parser refused: its text, so it can still be read. */
   raw?: string;
   /** True when a file at this place differs from the last commit. */
@@ -95,38 +60,43 @@ export interface NodeView {
   tree: string;
   /** As read; a malformed node keeps whatever could be read. */
   doc: NodeDoc;
+  /** Every view the decision governs: its references, then each view a field token names. */
+  views: string[];
   /** Ancestor places, root first. */
   ancestors: string[];
   /** Every capability in scope: included on the chain, and what those include. */
   capabilities: CapabilityInScope[];
-  /** Severed decision id -> the place of the chain node that severs it. */
-  severed: Record<string, string>;
   /** When this node lives in a capability: the capability's name. */
   capability?: string;
   /** When this node is a capability's root: the places of every node including it. */
   includers?: string[];
-  /** How many nodes become suspect when this node's decisions change. */
+  /** How many nodes become suspect when this node's decision changes. */
   dependents: number;
-  /** The context as the file writes it, for editing in place. */
+  /** The context as text, for editing in place. */
   contextText: string;
 }
 
-export interface ModelFieldView {
+/** One typed field of a view. */
+export interface ViewField {
   name: string;
-  /** Absent when the field is not yet deployed. */
-  deployed?: string;
-  /** Present while a pending entry or pending change carries an intended definition. */
-  intended?: string;
-  /** Where the intended definition lives: the model file, or a pending change's place. */
-  pendingIn?: 'model' | string;
-  /** Decision ids the field's definition cites. */
+  /** The type token as written; '?' when the field does not parse. */
+  type: string;
+  /** Decision ids the field cites. */
   cites: string[];
+  meaning: string;
+  /** The definition as the file writes it. */
+  raw: string;
 }
 
-export interface ModelView {
+/** A view read as its typed fields (ADROIT.md, Views). */
+export interface ViewRecord {
   id: string;
   decision: string;
-  fields: ModelFieldView[];
+  rejected: string[];
+  fields: ViewField[];
+  /** The views it consumes and the principles it grounds in. */
+  consumes: string[];
+  grounds: string[];
 }
 
 export interface Finding {
@@ -150,41 +120,34 @@ export interface LedgerView {
   /** The top-level places, in reading order. */
   roots: string[];
   findings: Finding[];
-  /** Decision id -> the place of its node. */
-  decisions: Record<string, string>;
+  /** Record id — a decision's or a view's — -> its place. */
+  ids: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
 // The write path: every change is a list of operations landing as one commit.
 
-/** The node fields edited whole; a decision's id is not among them (ui:all-but-id-editable). */
-export type NodeField = 'name' | 'includes' | 'severed' | 'context' | 'questions';
-/** The decision fields edited in place. */
-export type DecisionField = 'decision' | 'rejected' | 'severable';
+/** The node fields edited in place; the id is not among them (ui:all-but-id-editable). The
+ * dubious mark is edited by marking and confirming. */
+export type NodeField = 'name' | 'decision' | 'rejected' | 'references' | 'includes' | 'context' | 'questions';
 
 export type Operation =
   | { op: 'edit-node'; place: string; field: NodeField; value: unknown; clearDubious?: boolean }
-  | { op: 'edit-decision'; place: string; id: string; field: DecisionField; value: unknown; clearDubious?: boolean }
-  | { op: 'add-decision'; place: string; entry: DecisionEntry; clearDubious?: boolean }
-  | { op: 'create-node'; parent: string; doc: NodeDoc }
+  | { op: 'create-node'; parent: string; doc: Pick<NodeDoc, 'id' | 'name' | 'decision' | 'rejected'> }
+  | { op: 'delete-node'; place: string }
   | { op: 'move-node'; place: string; newParent: string }
   | { op: 'extract-capability'; place: string; name: string; includers: string[] }
   | { op: 'mark-dubious'; place: string; reason: string }
-  | { op: 'confirm'; place: string }
-  | { op: 'set-model-field'; model: string; field: string; intended: string }
-  | { op: 'begin-migration'; name: string; origin: string[]; entries: { model: string; field: string }[] }
-  | { op: 'land-migration'; name: string };
+  | { op: 'confirm'; place: string };
 
 export interface ChangeRequest {
   operations: Operation[];
   /** Commit message; defaulted from the operations when omitted. */
   message?: string;
-  /** Suspect places the user read through and confirmed during the walk. */
-  worked?: string[];
 }
 
 export interface Suspect {
-  /** Where the node lives once the change lands; later operations of the change name it so. */
+  /** Where the node lives once the change lands. */
   place: string;
   /** Where to read it now, before the change lands (differs only when the change moves it). */
   readAt: string;
@@ -193,9 +156,20 @@ export interface Suspect {
   reason: string;
 }
 
+/** A node a change deletes, with its decision. */
+export interface Removed {
+  /** Where it is now. */
+  place: string;
+  name: string;
+  id: string;
+  decision: string;
+}
+
 /** What a change would do, measured before anything is written. */
 export interface ChangePreview {
   suspects: Suspect[];
+  /** Every node, with its decision, the change deletes. */
+  removed: Removed[];
   /** Ledger-relative paths the change writes. */
   touched: string[];
 }
@@ -207,15 +181,16 @@ export interface ChangeOutcome {
   commit: string;
   touched: string[];
   suspects: Suspect[];
-  /** The suspects this commit marked dubious: the unworked part of the suspect set. */
+  removed: Removed[];
+  /** The suspects this commit marked dubious. */
   marked: string[];
-  /** Where the changed node now lives, when the change moved or created one. */
+  /** Where the user lands: the changed node's place, or the parent of a deleted one. */
   landedAt?: string;
 }
 
 export interface SearchHit {
   place: string;
-  /** What matched: name, a decision id's text, rejected, context, a model field... */
+  /** What matched: name, id, decision, rejected, context, a view field... */
   field: string;
   snippet: string;
   /** Where it lives: the labels of the places above it, root first. */

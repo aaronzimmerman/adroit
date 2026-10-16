@@ -19,12 +19,11 @@ export function descendantsOf(store: LibStore, rel: string): LibNode[] {
 type Reach = { kind: 'descendant' } | { kind: 'includer'; capability: string };
 
 /**
- * The nodes an edit of a node's decisions, includes, severed list or context makes suspect:
+ * The nodes an edit of a node's decision, rejected, references, includes or context makes suspect:
  * every descendant and, for a node inside a capability, every node that includes that
  * capability, with its descendants (ADROIT.md, Dubious).
- * @DecisionGap ADROIT.md names the includers of the edited node's capability; an includer that
- * itself sits in a capability had its scope changed too, so its own includers are followed,
- * one capability at a time, until none is new.
+ * Includers are followed through capabilities that include the edited one, one capability at a
+ * time, until none is new (ADROIT.md, Dubious).
  */
 export function editReach(store: LibStore, rel: string): Map<string, Reach> {
   const out = new Map<string, Reach>();

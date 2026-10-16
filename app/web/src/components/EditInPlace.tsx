@@ -31,8 +31,7 @@ export function EditInPlace<T>({
   const [draft, setDraft] = useState<T>(value);
   // @DecisionRef eng:defaults-are-likely-usage — editing a node you read through clears its own
   // mark by default; the lever is visible and can be turned off right there.
-  // @DecisionGap ADROIT.md clears the mark when someone reads the node through and edits it; an
-  // edit made without reading it through (a typo fix) is not ruled, so the clearing is a lever.
+  // @DecisionRef ui:edit-offers-clearing — the clear-mark checkbox, on by default.
   const [clear, setClear] = useState(true);
 
   if (mode === 'flow') return <ChangeFlow operations={toOps(draft, dubious && clear)} onCancel={() => setMode('edit')} />;

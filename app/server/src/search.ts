@@ -1,6 +1,6 @@
 // @DecisionRef ui:search-any-text — finding is a match on any text in the ledger directory:
-// names, decisions, rejected alternatives, includes, notes, context, model fields and pending
-// entries, pending changes, the domain registry, and the text of a file the parser refused.
+// names, ids, decisions, rejected alternatives, references, includes, notes, context, a view's
+// field names and definitions, the domain registry, and the text of a file the parser refused.
 // @DecisionRef ui:no-privileged-id-lookup — an id is one more piece of text; a pasted id finds
 // its decision because its text matches, through the same match as every other field.
 import type { LedgerView, Place, SearchHit } from '@adroit/shared';
@@ -27,26 +27,20 @@ function fieldsOf(place: Place, view: LedgerView): [string, string][] {
   const out: [string, string][] = [];
   if (place.node) {
     const d = place.node.doc;
-    out.push(['name', d.name]);
-    for (const x of d.decisions) {
-      out.push([`${x.id} · id`, x.id], [`${x.id} · decision`, x.decision]);
-      (x.rejected ?? []).forEach((r, i) => out.push([`${x.id} · rejected ${i + 1}`, r]));
-    }
+    out.push(['name', d.name], ['id', d.id], ['decision', d.decision]);
+    (d.rejected ?? []).forEach((r, i) => out.push([`rejected ${i + 1}`, r]));
+    if (d.references?.length) out.push(['references', d.references.join(', ')]);
     if (d.includes?.length) out.push(['includes', d.includes.join(', ')]);
-    if (d.severed?.length) out.push(['severed', d.severed.join(', ')]);
     if (d.dubious) out.push(['dubious', d.dubious]);
     (d.questions ?? []).forEach((q, i) => out.push([`question ${i + 1}`, q]));
     flatten('context', d.context, out);
   }
-  if (place.model) {
-    out.push(['id', place.model.id], ['decision', place.model.decision]);
-    for (const f of place.model.fields) {
-      out.push([`field ${f.name}`, f.name]);
-      if (f.deployed) out.push([`field ${f.name} · deployed`, f.deployed]);
-      if (f.intended) out.push([`field ${f.name} · intended`, f.intended]);
-    }
+  if (place.view) {
+    const v = place.view;
+    out.push(['id', v.id], ['decision', v.decision]);
+    v.rejected.forEach((r, i) => out.push([`rejected ${i + 1}`, r]));
+    for (const f of v.fields) out.push([`field ${f.name}`, f.name], [`field ${f.name} · definition`, f.raw]);
   }
-  if (place.change) flatten('pending change', place.change, out);
   if (place.raw !== undefined) place.raw.split('\n').forEach((line, i) => out.push([`line ${i + 1}`, line]));
   if (place.path === 'domains.yaml') {
     out.push(['corpus', view.corpus]);

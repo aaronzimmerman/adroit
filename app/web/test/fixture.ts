@@ -1,5 +1,5 @@
-// A small LedgerView as the server would send it: an app tree with a severed decision, a
-// capability the app root includes, a model with a pending entry, and one finding.
+// A small LedgerView as the server would send it: an app tree, a capability the app root
+// includes, a view with typed fields, and one finding.
 import type { LedgerView, NodeDoc, NodeView, Place } from '@adroit/shared';
 
 const node = (
@@ -19,9 +19,9 @@ const node = (
     rel: path.endsWith('.yaml') ? path : `${path}/self.yaml`,
     tree: path.split('/').slice(0, 2).join('/'),
     doc,
+    views: doc.references ?? [],
     ancestors: [],
     capabilities: [],
-    severed: {},
     dependents: 0,
     contextText: '',
     ...extra,
@@ -36,16 +36,14 @@ export function makeView(): LedgerView {
     product: root('product', ['product/demo']),
     capabilities: root('capabilities', ['capabilities/notify']),
     engineering: root('engineering', []),
-    models: root('models', ['models/model.widget.yaml']),
+    models: root('models', ['models/widget.yaml']),
     'product/demo': node(
       'product/demo',
       'product',
       {
+        id: 'story:demo',
         name: 'Demo',
-        decisions: [
-          { id: 'story:demo', decision: 'A user can demo things.' },
-          { id: 'app:works-offline', decision: 'Every surface works with no network.', severable: true },
-        ],
+        decision: 'A user can demo things.',
         includes: ['notify'],
         questions: ['Does the demo need accounts?'],
       },
@@ -56,15 +54,19 @@ export function makeView(): LedgerView {
       'product/demo/parent-rule',
       'product/demo',
       {
+        id: 'app:parent-rule',
         name: 'Parent rule',
-        decisions: [{ id: 'app:parent-rule', decision: 'Parents rule broadly.', rejected: ['letting children rule — too chaotic'] }],
-        context: { why: 'because' },
+        decision: 'Parents rule broadly.',
+        rejected: ['letting children rule — too chaotic'],
+        references: ['view:widget'],
+        context: 'because parents know',
       },
       {
         ancestors: ['product/demo'],
         capabilities: [{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }],
+        views: ['view:widget', 'view:part'],
         dependents: 2,
-        contextText: 'why: because\n',
+        contextText: 'because parents know',
       },
       ['product/demo/parent-rule/online-only'],
     ),
@@ -72,15 +74,14 @@ export function makeView(): LedgerView {
       'product/demo/parent-rule/online-only',
       'product/demo/parent-rule',
       {
+        id: 'app:online-only',
         name: 'Online only',
-        decisions: [{ id: 'app:online-only', decision: 'This corner works online only.' }],
-        severed: ['app:works-offline'],
+        decision: 'This corner works online only.',
         dubious: '"Parent rule" changed (product/demo/parent-rule)',
       },
       {
         ancestors: ['product/demo', 'product/demo/parent-rule'],
         capabilities: [{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }],
-        severed: { 'app:works-offline': 'product/demo/parent-rule/online-only' },
         dependents: 1,
       },
       ['product/demo/parent-rule/online-only/deep-leaf.yaml'],
@@ -88,29 +89,32 @@ export function makeView(): LedgerView {
     'product/demo/parent-rule/online-only/deep-leaf.yaml': node(
       'product/demo/parent-rule/online-only/deep-leaf.yaml',
       'product/demo/parent-rule/online-only',
-      { name: 'Deep leaf', decisions: [{ id: 'app:deep-leaf', decision: 'Deep leaves live here.' }] },
+      { id: 'app:deep-leaf', name: 'Deep leaf', decision: 'Deep leaves live here.' },
       { ancestors: ['product/demo', 'product/demo/parent-rule', 'product/demo/parent-rule/online-only'] },
     ),
     'capabilities/notify': node(
       'capabilities/notify',
       'capabilities',
-      { name: 'Notify', decisions: [{ id: 'notify:tell-the-user', decision: 'The user is told when something happens.' }] },
+      { id: 'notify:tell-the-user', name: 'Notify', decision: 'The user is told when something happens.' },
       { capability: 'notify', includers: ['product/demo'], dependents: 4 },
     ),
-    'models/model.widget.yaml': {
-      path: 'models/model.widget.yaml',
-      kind: 'model',
-      label: 'model:widget',
+    'models/widget.yaml': {
+      path: 'models/widget.yaml',
+      kind: 'view',
+      label: 'view:widget',
       parent: 'models',
       children: [],
       uncommitted: false,
-      model: {
-        id: 'model:widget',
-        decision: 'One widget at rest.',
+      view: {
+        id: 'view:widget',
+        decision: 'One widget, as the demo shows it.',
+        rejected: [],
         fields: [
-          { name: 'name', deployed: 'scalar (app:parent-rule) — the widget name', cites: ['app:parent-rule'] },
-          { name: 'size', deployed: 'scalar — how big', intended: 'scalar — in millimetres', pendingIn: 'model', cites: [] },
+          { name: 'name', type: 'string', cites: ['app:parent-rule'], meaning: 'the widget name', raw: 'string (app:parent-rule) — the widget name' },
+          { name: 'size', type: 'int', cites: [], meaning: 'how big it is', raw: 'int — how big it is' },
         ],
+        consumes: ['view:part'],
+        grounds: ['principle:derive-dont-materialize'],
       },
     },
   };
@@ -124,13 +128,13 @@ export function makeView(): LedgerView {
     findings: [
       { place: 'product/demo/parent-rule', subject: 'app:parent-rule', rule: 'id-in-decision-text', message: "decision names 'app:x'", severity: 'error' },
     ],
-    decisions: {
+    ids: {
       'story:demo': 'product/demo',
-      'app:works-offline': 'product/demo',
       'app:parent-rule': 'product/demo/parent-rule',
       'app:online-only': 'product/demo/parent-rule/online-only',
       'app:deep-leaf': 'product/demo/parent-rule/online-only/deep-leaf.yaml',
       'notify:tell-the-user': 'capabilities/notify',
+      'view:widget': 'models/widget.yaml',
     },
   };
 }

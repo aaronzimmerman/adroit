@@ -33,44 +33,43 @@ export function commitAll(repo: string, message: string, epochSeconds: number): 
 
 const PAST_EPOCH = Math.floor(Date.now() / 1000) - 10_000;
 
-const d = (id: string, decision: string, extra: Record<string, unknown> = {}) => ({ id, decision, ...extra });
+const n = (id: string, name: string, decision: string, extra: Record<string, unknown> = {}) => ({ id, name, decision, ...extra });
 
-/** The fixture ledger, as files: an app tree with a severable decision a descendant severs, a
- * capability the app root includes, an engineering node and a model. */
+/** The fixture ledger, as files: an app tree, a capability the app root includes, an engineering
+ * node, and two views — one consuming the other, one of its fields named by a decision's token. */
 export const FIXTURE: Record<string, unknown> = {
   'domains.yaml': { corpus: 'fixture', app: 'The demo app.', eng: 'Engineering practice.' },
-  'engineering/sample-practice.yaml': { name: 'Sample practice', decisions: [d('eng:sample-practice', 'Do things the sample way.')] },
-  'capabilities/notify/self.yaml': {
-    name: 'Notify',
-    decisions: [d('notify:tell-the-user', 'The user is told when something happens.', { severable: true })],
-  },
-  'capabilities/notify/quiet-hours.yaml': { name: 'Quiet hours', decisions: [d('notify:quiet-hours', 'Nothing fires at night.')] },
-  'product/demo/self.yaml': {
-    name: 'Demo',
-    decisions: [
-      d('story:demo', 'A user can demo things.'),
-      d('app:works-offline', 'Every surface works with no network.', { severable: true }),
-    ],
+  'engineering/sample-practice.yaml': n('eng:sample-practice', 'Sample practice', 'Do things the sample way.'),
+  'capabilities/notify/self.yaml': n('notify:tell-the-user', 'Notify', 'The user is told when something happens.'),
+  'capabilities/notify/quiet-hours.yaml': n('notify:quiet-hours', 'Quiet hours', 'Nothing fires at night.'),
+  'product/demo/self.yaml': n('story:demo', 'Demo', 'A user can demo things.', {
     includes: ['notify'],
     questions: ['Does the demo need accounts?'],
+  }),
+  'product/demo/parent-rule/self.yaml': n('app:parent-rule', 'Parent rule', 'Parents rule broadly.', {
+    rejected: ['letting children rule — too chaotic'],
+    context: 'because parents know',
+  }),
+  'product/demo/parent-rule/child-rule.yaml': n('app:child-rule', 'Child rule', 'Children follow the parent rule.'),
+  'product/demo/parent-rule/online-only/self.yaml': n('app:online-only', 'Online only', 'This corner works online only.'),
+  'product/demo/parent-rule/online-only/deep-leaf.yaml': n('app:deep-leaf', 'Deep leaf', 'Deep leaves live here.'),
+  'product/demo/sibling.yaml': n('app:sibling', 'Sibling', 'A widget shows its {widget.size}.', { references: ['view:part'] }),
+  'models/widget.yaml': {
+    id: 'view:widget',
+    decision: 'One widget, as the demo shows it.',
+    schema: {
+      fields: {
+        name: 'string (app:parent-rule) — the widget name',
+        size: 'int — how big it is',
+        parts: 'list<ref<view:part>>',
+      },
+    },
+    links: { consumes: ['view:part'] },
   },
-  'product/demo/parent-rule/self.yaml': {
-    name: 'Parent rule',
-    decisions: [d('app:parent-rule', 'Parents rule broadly.', { rejected: ['letting children rule — too chaotic'] })],
-    context: { why: 'because' },
-  },
-  'product/demo/parent-rule/child-rule.yaml': { name: 'Child rule', decisions: [d('app:child-rule', 'Children follow the parent rule.')] },
-  'product/demo/parent-rule/online-only/self.yaml': {
-    name: 'Online only',
-    decisions: [d('app:online-only', 'This corner works online only.')],
-    severed: ['app:works-offline'],
-  },
-  'product/demo/parent-rule/online-only/deep-leaf.yaml': { name: 'Deep leaf', decisions: [d('app:deep-leaf', 'Deep leaves live here.')] },
-  'product/demo/sibling.yaml': { name: 'Sibling', decisions: [d('app:sibling', 'A sibling rule.')] },
-  'models/model.widget.yaml': {
-    id: 'model:widget',
-    decision: 'One widget at rest.',
-    shape: { fields: { name: 'scalar (app:parent-rule) — the widget name', size: 'scalar — how big it is' } },
+  'models/part.yaml': {
+    id: 'view:part',
+    decision: 'One part of a widget.',
+    schema: { fields: { label: 'string (app:sibling, app:child-rule) — what the part is called' } },
   },
 };
 

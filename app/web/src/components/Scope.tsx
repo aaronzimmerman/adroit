@@ -1,32 +1,21 @@
-import type { DecisionEntry, NodeView } from '@adroit/shared';
+import type { NodeDoc, NodeView } from '@adroit/shared';
 import { labelOf, useLedger } from '../context.js';
 
-/** One decision as read in scope, marked when the chain severs it. */
-function ScopedDecision({ d, severedBy }: { d: DecisionEntry; severedBy?: string }) {
-  const { view, travel } = useLedger();
+/** One node's decision, as read in scope. */
+function ScopedDecision({ doc }: { doc: NodeDoc }) {
   return (
-    <li className={severedBy ? 'severed' : ''}>
-      <code>{d.id}</code> {d.decision}
-      {/* @DecisionRef ui:severed-shown-marked — still shown, marked, with who severs it. */}
-      {severedBy && (
-        <span className="badge severed-badge">
-          severed by{' '}
-          <button className="link" onClick={() => travel(severedBy)}>
-            {labelOf(view, severedBy)}
-          </button>
-        </span>
-      )}
+    <li>
+      <code>{doc.id}</code> {doc.decision}
     </li>
   );
 }
 
 /**
- * Everything binding the current node from above: each ancestor's decisions under that
- * ancestor, then each capability in scope summarized by its root node's decisions.
- * @DecisionRef ui:trace-dependence — the node's own decisions sit above this; here is the rest.
+ * Everything binding the current node from above: each ancestor's decision under that
+ * ancestor, then each capability in scope summarized by its root node's decision.
+ * @DecisionRef ui:trace-dependence — the node's own decision sits above this; here is the rest.
  * @DecisionRef ui:ancestors-grouped-by-ancestor — grouped by the ancestor that holds them.
- * @DecisionGap engineering binds every node too (ADROIT.md, Scope) but the ledger lists only the
- * node's own, its ancestors' and its capabilities' decisions; engineering stays in its own root.
+ * @DecisionRef ui:engineering-left-out-of-scope — engineering is not listed here; it has its own root.
  */
 export function BindingFromAbove({ node }: { node: NodeView }) {
   const { view, travel } = useLedger();
@@ -43,9 +32,7 @@ export function BindingFromAbove({ node }: { node: NodeView }) {
                 {labelOf(view, a)}
               </button>
               <ul className="decision-list">
-                {(anc?.doc.decisions ?? []).map((d) => (
-                  <ScopedDecision key={d.id} d={d} severedBy={node.severed[d.id]} />
-                ))}
+                {anc && <ScopedDecision doc={anc.doc} />}
               </ul>
             </div>
           );
@@ -54,10 +41,10 @@ export function BindingFromAbove({ node }: { node: NodeView }) {
       {node.capabilities.length > 0 && (
         <section aria-label="capabilities in scope">
           <h3>Capabilities in scope</h3>
-          {/* @DecisionRef ui:capabilities-shown-summarized — each by its root node's decisions. */}
+          {/* @DecisionRef ui:capabilities-shown-summarized — each by its root node's decision. */}
           {node.capabilities.map((c) => {
             const root = c.root ? view.places[c.root]?.node : undefined;
-            const shown = root?.doc.decisions.length ?? 0;
+            const shown = root ? 1 : 0;
             return (
               <div key={c.name} className="capability-group">
                 <div className="row">
@@ -75,11 +62,11 @@ export function BindingFromAbove({ node }: { node: NodeView }) {
                     </button>
                   )}
                 </div>
-                <ul className="decision-list">
-                  {(root?.doc.decisions ?? []).map((d) => (
-                    <ScopedDecision key={d.id} d={d} severedBy={node.severed[d.id]} />
-                  ))}
-                </ul>
+                {root && (
+                  <ul className="decision-list">
+                    <ScopedDecision doc={root.doc} />
+                  </ul>
+                )}
                 {c.decisionCount > shown && (
                   <p className="muted">
                     {c.decisionCount - shown} more decision{c.decisionCount - shown === 1 ? '' : 's'} in its tree bind here too — open it to

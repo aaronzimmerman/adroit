@@ -17,7 +17,7 @@ function parentChoices(places: Record<string, Place>, own?: string): string[] {
 }
 
 /**
- * The structural changes made from a place: a node beneath it, a move, an extraction.
+ * The structural changes made from a place: a node beneath it, a move, an extraction, a deletion.
  * @DecisionRef ui:change-the-ledger — add a node beneath another; move one; extract a capability.
  */
 export function Structure({ place }: { place: string }) {
@@ -32,6 +32,9 @@ export function Structure({ place }: { place: string }) {
         <button onClick={() => setForm(form === 'add' ? null : 'add')}>add a node beneath</button>
         {isNode && <button onClick={() => setForm(form === 'move' ? null : 'move')}>move</button>}
         {isNode && <button onClick={() => setForm(form === 'extract' ? null : 'extract')}>extract as a capability</button>}
+        {/* @DecisionRef ui:delete-a-node — the node and everything nested beneath it. The change
+            preview lists every node it removes before the commit. */}
+        {isNode && <button onClick={() => setOps([{ op: 'delete-node', place }])}>delete…</button>}
       </div>
       {form === 'add' && <AddNode parent={place} onReady={setOps} />}
       {form === 'move' && <MoveNode place={place} onReady={setOps} />}
@@ -40,7 +43,7 @@ export function Structure({ place }: { place: string }) {
   );
 }
 
-/** @DecisionRef ui:create-a-node — a new node, in its place beneath this one. */
+/** @DecisionRef ui:create-a-node — a new one-decision node, in its place beneath this one. */
 function AddNode({ parent, onReady }: { parent: string; onReady: (ops: Operation[]) => void }) {
   const { view } = useLedger();
   const [name, setName] = useState('');
@@ -54,7 +57,7 @@ function AddNode({ parent, onReady }: { parent: string; onReady: (ops: Operation
         name <input value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label>
-        first decision's id{' '}
+        id{' '}
         <input list="namespaces" value={id} placeholder="domain:kebab-slug" onChange={(e) => setId(e.target.value)} />
       </label>
       <datalist id="namespaces">
@@ -78,10 +81,7 @@ function AddNode({ parent, onReady }: { parent: string; onReady: (ops: Operation
             {
               op: 'create-node',
               parent,
-              doc: {
-                name,
-                decisions: [{ id, decision, rejected: rejected.split('\n').filter((r) => r.trim()) }],
-              },
+              doc: { id, name, decision, rejected: rejected.split('\n').filter((r) => r.trim()) },
             },
           ])
         }

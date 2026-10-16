@@ -82,7 +82,8 @@ export function App() {
     (outcome: ChangeOutcome) => {
       setNotice(
         `committed ${outcome.commit.slice(0, 8)}` +
-          (outcome.marked.length ? ` — marked ${outcome.marked.length} unworked suspect${outcome.marked.length === 1 ? '' : 's'} dubious` : ''),
+          (outcome.removed.length ? ` — deleted ${outcome.removed.length} node${outcome.removed.length === 1 ? '' : 's'}` : '') +
+          (outcome.marked.length ? ` — marked ${outcome.marked.length} suspect${outcome.marked.length === 1 ? '' : 's'} dubious` : ''),
       );
       void reload(outcome.landedAt);
       window.setTimeout(() => setNotice(null), 8000);

@@ -78,9 +78,6 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 .decision-text { margin: 4px 0; font-size: 15px; }
 .rejected, .questions { margin: 4px 0; padding-left: 18px; }
 .decision-list { margin: 4px 0; padding-left: 18px; }
-.decision-list li.severed { opacity: 0.6; text-decoration: line-through; text-decoration-color: var(--muted); }
-.decision-list li.severed .badge { text-decoration: none; display: inline-block; margin-left: 6px; }
-.severed-badge { border-color: var(--amber); color: var(--amber); }
 .ancestor-group, .capability-group { margin: 8px 0; padding-left: 8px; border-left: 2px solid var(--line); }
 .group-name { font-weight: 600; }
 .context, .raw { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; white-space: pre-wrap; }
@@ -100,10 +97,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 
 .flow { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 8px; background: var(--panel); }
 .suspect-list { padding-left: 22px; }
-.suspect-list li.current { font-weight: 600; }
-.walk-state { font-size: 11px; color: var(--muted); }
-.walk-state.confirmed, .walk-state.edited { color: var(--accent); }
-.suspect-card { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.removed-list { padding-left: 22px; }
 .flow-foot { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .flow-foot input { flex: 1; }
 
@@ -119,7 +113,6 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 
 table.fields { border-collapse: collapse; width: 100%; margin: 10px 0; }
 table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
-table.fields tr.pending td { background: #1d1a2c; }
 .lens { margin-top: 8px; }
 .citation pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto; }
 .diff { white-space: pre; }

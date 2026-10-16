@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DecisionEntry, NodeView, Operation } from '@adroit/shared';
+import type { NodeView, Operation } from '@adroit/shared';
 import { labelOf, useLedger } from '../context.js';
 import { ChangeFlow } from './ChangeFlow.jsx';
 import { EditInPlace, linesEditor, textEditor } from './EditInPlace.jsx';
@@ -10,16 +10,23 @@ import { Structure } from './Structure.jsx';
 const trimmed = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean);
 
 /**
- * The current node, read and edited in place: its peer decisions with their rejected
- * alternatives, its dubious mark and questions, its structure, and everything binding it from
- * above.
- * @DecisionRef ui:details-panel-right — the right panel shows the current node.
- * @DecisionRef ui:all-but-id-editable — every field edits here; a decision's id is shown, fixed.
+ * The current node, read and edited in place: its one decision with its rejected alternatives
+ * and the views it references, its dubious mark and questions, its includes and context, its
+ * structure, and everything binding it from above.
+ * @DecisionRef ui:details-panel-right — the right panel shows the current node: its decision with
+ * its rejected alternatives, its dubious mark and its questions.
+ * @DecisionRef ui:all-but-id-editable — every field edits here; the id is shown, fixed.
  */
 export function NodeDetails({ place, node }: { place: string; node: NodeView }) {
+  const { view, travel } = useLedger();
+  const [lens, setLens] = useState(false);
   const doc = node.doc;
   const dubious = doc.dubious !== undefined;
   const reach = node.dependents;
+  const edit =
+    (field: Extract<Operation, { op: 'edit-node' }>['field']) =>
+    (value: unknown, clearDubious: boolean): Operation[] => [{ op: 'edit-node', place, field, value, clearDubious }];
+  const explicit = new Set(doc.references ?? []);
   return (
     <article className="node-details">
       <header>
@@ -28,11 +35,14 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           value={doc.name}
           render={(v) => <h2>{v}</h2>}
           editor={textEditor('name', 1)}
-          toOps={(v, clearDubious) => [{ op: 'edit-node', place, field: 'name', value: v, clearDubious }]}
+          toOps={edit('name')}
           dubious={dubious}
         />
-        <div className="muted">
-          {place} · {node.tree}
+        <div className="row">
+          <code className="decision-id">{doc.id}</code>
+          <span className="muted">
+            {place} · {node.tree}
+          </span>
         </div>
         {/* @DecisionRef eng:prominence-follows-dependence — what depends on this node is surfaced
             where it is edited, weighted by how much does. */}
@@ -45,12 +55,70 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
 
       <DubiousMark place={place} line={doc.dubious} />
 
-      <section aria-label="decisions">
-        <h3>Decisions</h3>
-        {doc.decisions.map((d) => (
-          <DecisionCard key={d.id} place={place} d={d} reach={reach} dubious={dubious} />
-        ))}
-        <AddDecision place={place} reach={reach} />
+      <section aria-label="the decision" className="decision-card">
+        <EditInPlace
+          label="decision"
+          value={doc.decision}
+          render={(v) => <p className="decision-text">{v}</p>}
+          editor={textEditor('decision', 4)}
+          toOps={edit('decision')}
+          dependents={reach}
+          dubious={dubious}
+        />
+        <EditInPlace
+          label="rejected"
+          value={doc.rejected ?? []}
+          render={(v) =>
+            v.length ? (
+              <ul className="rejected">
+                {v.map((r, i) => (
+                  <li key={i}>
+                    <span className="muted">rejected:</span> {r}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No rejected alternatives.</p>
+            )
+          }
+          editor={linesEditor('rejected, one per line')}
+          toOps={(v, c) => edit('rejected')(trimmed(v), c)}
+          dependents={reach}
+          dubious={dubious}
+        />
+        <EditInPlace
+          label="references"
+          value={doc.references ?? []}
+          render={() =>
+            node.views.length ? (
+              <p>
+                <span className="muted">references:</span>{' '}
+                {node.views.map((id) => (
+                  <span key={id}>
+                    {view.ids[id] !== undefined ? (
+                      <button className="link" onClick={() => travel(view.ids[id])}>
+                        {id}
+                      </button>
+                    ) : (
+                      <code>{id}</code>
+                    )}
+                    {!explicit.has(id) && <span className="muted"> (by a field token)</span>}{' '}
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className="muted">References no view.</p>
+            )
+          }
+          editor={linesEditor('references, one per line', 2)}
+          toOps={(v, c) => edit('references')(trimmed(v), c)}
+          dependents={reach}
+          dubious={dubious}
+        />
+        <button className="link" onClick={() => setLens(!lens)}>
+          {lens ? 'hide the code' : 'code lens'}
+        </button>
+        {lens && <Lens id={doc.id} />}
       </section>
 
       <section aria-label="questions">
@@ -70,29 +138,19 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
             )
           }
           editor={linesEditor('questions, one per line')}
-          toOps={(qs, clearDubious) => [{ op: 'edit-node', place, field: 'questions', value: trimmed(qs), clearDubious }]}
+          toOps={(qs, c) => edit('questions')(trimmed(qs), c)}
           dubious={dubious}
         />
       </section>
 
-      <section aria-label="includes and severed">
+      <section aria-label="includes">
         <h3>Includes</h3>
         <EditInPlace
           label="includes"
           value={doc.includes ?? []}
           render={(v) => (v.length ? <p>{v.join(', ')}</p> : <p className="muted">Includes no capability.</p>)}
           editor={linesEditor('includes, one per line', 2)}
-          toOps={(v, clearDubious) => [{ op: 'edit-node', place, field: 'includes', value: trimmed(v), clearDubious }]}
-          dependents={reach}
-          dubious={dubious}
-        />
-        <h3>Severed</h3>
-        <EditInPlace
-          label="severed"
-          value={doc.severed ?? []}
-          render={(v) => (v.length ? <p>{v.join(', ')}</p> : <p className="muted">Severs nothing.</p>)}
-          editor={linesEditor('severed, one per line', 2)}
-          toOps={(v, clearDubious) => [{ op: 'edit-node', place, field: 'severed', value: trimmed(v), clearDubious }]}
+          toOps={(v, c) => edit('includes')(trimmed(v), c)}
           dependents={reach}
           dubious={dubious}
         />
@@ -105,7 +163,7 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           value={node.contextText}
           render={(v) => (v ? <pre className="context">{v}</pre> : <p className="muted">No context.</p>)}
           editor={textEditor('context', 5)}
-          toOps={(v, clearDubious) => [{ op: 'edit-node', place, field: 'context', value: v, clearDubious }]}
+          toOps={edit('context')}
           dependents={reach}
           dubious={dubious}
         />
@@ -115,107 +173,6 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
       <Children place={place} />
       <Structure place={place} />
     </article>
-  );
-}
-
-function DecisionCard({ place, d, reach, dubious }: { place: string; d: DecisionEntry; reach: number; dubious: boolean }) {
-  const [lens, setLens] = useState(false);
-  const edit = (field: 'decision' | 'rejected' | 'severable') => (value: unknown, clearDubious: boolean): Operation[] => [
-    { op: 'edit-decision', place, id: d.id, field, value, clearDubious },
-  ];
-  return (
-    <div className="decision-card">
-      <div className="row">
-        <code className="decision-id">{d.id}</code>
-        <button className="link" onClick={() => setLens(!lens)}>
-          {lens ? 'hide the code' : 'code lens'}
-        </button>
-      </div>
-      <EditInPlace
-        label={`${d.id} decision`}
-        value={d.decision}
-        render={(v) => <p className="decision-text">{v}</p>}
-        editor={textEditor(`${d.id} decision`, 4)}
-        toOps={edit('decision')}
-        dependents={reach}
-        dubious={dubious}
-      />
-      <EditInPlace
-        label={`${d.id} rejected`}
-        value={d.rejected ?? []}
-        render={(v) =>
-          v.length ? (
-            <ul className="rejected">
-              {v.map((r, i) => (
-                <li key={i}>
-                  <span className="muted">rejected:</span> {r}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">No rejected alternatives.</p>
-          )
-        }
-        editor={linesEditor(`${d.id} rejected`)}
-        toOps={(v, c) => edit('rejected')(trimmed(v), c)}
-        dependents={reach}
-        dubious={dubious}
-      />
-      <EditInPlace
-        label={`${d.id} severable`}
-        value={d.severable === true}
-        render={(v) => <p className="muted">{v ? 'severable: a descendant may opt out' : 'not severable'}</p>}
-        editor={(v, set) => (
-          <label className="checkbox-row">
-            <input type="checkbox" aria-label={`${d.id} severable`} checked={v} onChange={(e) => set(e.target.checked)} /> severable
-          </label>
-        )}
-        toOps={edit('severable')}
-        dependents={reach}
-        dubious={dubious}
-      />
-      {lens && <Lens id={d.id} />}
-    </div>
-  );
-}
-
-/** A new peer decision on this node.
- * @DecisionGap the ledger makes a node's decisions editable without saying whether that adds or
- * removes peers; adding one is offered, removing one is not, since a deleted decision is a
- * supersession and the UI does not offer supersession. */
-function AddDecision({ place, reach }: { place: string; reach: number }) {
-  const [open, setOpen] = useState(false);
-  const [ops, setOps] = useState<Operation[] | null>(null);
-  const [id, setId] = useState('');
-  const [text, setText] = useState('');
-  const [rejected, setRejected] = useState('');
-  if (ops) return <ChangeFlow operations={ops} onCancel={() => setOps(null)} />;
-  if (!open) return <button onClick={() => setOpen(true)}>add a peer decision</button>;
-  return (
-    <div className="form" aria-label="add a decision">
-      <label>
-        id <input value={id} placeholder="domain:kebab-slug" onChange={(e) => setId(e.target.value)} />
-      </label>
-      <label>
-        the decision, one clause
-        <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} />
-      </label>
-      <label>
-        rejected alternatives, one per line
-        <textarea rows={2} value={rejected} onChange={(e) => setRejected(e.target.value)} />
-      </label>
-      {reach > 0 && <div className="implication">Adding a decision makes {reach} node{reach === 1 ? '' : 's'} beneath suspect.</div>}
-      <div className="row">
-        <button
-          className="primary"
-          disabled={!id.trim() || !text.trim()}
-          onClick={() => setOps([{ op: 'add-decision', place, entry: { id, decision: text, rejected: trimmed(rejected.split('\n')) } }])}
-        >
-          add
-        </button>
-        <button onClick={() => setOpen(false)}>cancel</button>
-      </div>
-    </div>
   );
 }
 
