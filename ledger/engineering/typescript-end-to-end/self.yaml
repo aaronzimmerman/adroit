@@ -1,0 +1,12 @@
+id: eng:typescript-end-to-end
+name: Typescript end to end
+decision: "The UI is TypeScript end to end: one language for the server and the view."
+rejected:
+  - >-
+    different languages per side — the record shape would be declared twice, and the two
+    declarations drift exactly the way duplicated decisions do
+  - >-
+    untyped JavaScript — the whole product is the handling of one structured shape (the node);
+    forgoing types on it discards the cheapest check available
+context: >-
+  The baseline stack is open to recommendation; opinions are reserved for methodology and practice.

@@ -1,0 +1,3 @@
+id: ui:edit-in-the-details-panel
+name: Edit in the details panel
+decision: The current node is edited in place in the details panel.

@@ -1,0 +1,3 @@
+id: ui:up-a-level-down-another
+name: Up a level down another
+decision: From any node the user can go up a level and descend into a different subtree.

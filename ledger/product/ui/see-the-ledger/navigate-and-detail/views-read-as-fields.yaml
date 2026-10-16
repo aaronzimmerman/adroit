@@ -1,0 +1,3 @@
+id: ui:views-read-as-fields
+name: Views read as fields
+decision: Views read as their typed fields, not as decision trees.

@@ -1,0 +1,5 @@
+id: ui:lens-shows-snippets
+name: Lens shows snippets
+decision: >-
+  Through the lens a user reads code snippets in context, to see how the code works as a result of
+  the decisions made.

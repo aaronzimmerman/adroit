@@ -1,0 +1,9 @@
+id: ui:extract-a-capability
+name: Extract a capability
+decision: >-
+  A user can extract an emergent capability: select the root of the repeated pattern, move it into
+  the capabilities root, and include it at each place it repeated.
+rejected:
+  - >-
+    reshaping (similarity, extraction) as a tree of its own beside editing — the user ruled
+    extraction is the same use case as editing: a bigger edit, not a different need

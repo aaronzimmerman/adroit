@@ -1,0 +1,3 @@
+id: ui:deletion-shows-everything-lost
+name: Deletion shows everything lost
+decision: Before a deletion commits, the UI shows every node and decision it removes.

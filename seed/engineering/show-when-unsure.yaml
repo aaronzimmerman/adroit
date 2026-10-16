@@ -1,23 +1,19 @@
+id: principle:show-when-unsure
 name: Show when unsure
-decisions:
-  - id: principle:show-when-unsure
-    decision: >-
-      When a filter or question can't be answered for a record, the record is shown, not silently
-      dropped — and the uncertainty is stated where it's shown. Reach errs wide: give people every
-      chance to see relevant data; honesty lives in the disclosure, never in the omission. This
-      holds on every surface that answers the same question — a page and its notifications may shape
-      the disclosure differently, but neither may quietly drop or quietly assert. Two boundaries: a
-      field the product REQUIRES is never a maybe — a record missing it is a defect to fix upstream,
-      not a doubt to disclose; and reach is priced — when surfacing the unsure would clutter every
-      reader for marginal value, requiring the data upstream wins over disclosing its absence
-      downstream.
-    rejected:
-      - >-
-        precision-first filtering — dropping unanswerable records protects the filter's cleanliness
-        by hiding data the person may have wanted
-      - including without disclosure — presenting a maybe as a match overstates what the data claims
-context:
-  why: >-
-    the read-side complement of absence-is-data: storage keeps the absence honest, this keeps it
-    honest at presentation
-  src: adroit seed v1, distilled from StageDoor's ledger (principle:show-when-unsure)
+decision: >-
+  When a filter or question can't be answered for a record, the record is shown, not silently
+  dropped — and the uncertainty is stated where it's shown. Reach errs wide: give people every
+  chance to see relevant data; honesty lives in the disclosure, never in the omission. This holds on
+  every surface that answers the same question — a page and its notifications may shape the
+  disclosure differently, but neither may quietly drop or quietly assert. Two boundaries: a field
+  the product REQUIRES is never a maybe — a record missing it is a defect to fix upstream, not a
+  doubt to disclose; and reach is priced — when surfacing the unsure would clutter every reader for
+  marginal value, requiring the data upstream wins over disclosing its absence downstream.
+rejected:
+  - >-
+    precision-first filtering — dropping unanswerable records protects the filter's cleanliness by
+    hiding data the person may have wanted
+  - including without disclosure — presenting a maybe as a match overstates what the data claims
+context: >-
+  The read-side complement of absence-is-data: storage keeps the absence honest, this keeps it
+  honest at presentation.

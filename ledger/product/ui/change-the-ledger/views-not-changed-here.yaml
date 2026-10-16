@@ -1,0 +1,11 @@
+id: ui:views-not-changed-here
+name: Views not changed here
+decision: A user reads views in the UI but cannot change them there.
+rejected:
+  - >-
+    editing a view's typed fields from the UI now — a view states the implementation as it stands,
+    and an edit to its shape needs its referrers walked, which the UI does not yet do
+questions:
+  - >-
+    When the UI opens view editing, does an edit to a view's shape walk its referrers before it
+    commits?

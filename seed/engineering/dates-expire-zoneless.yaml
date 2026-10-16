@@ -1,12 +1,9 @@
+id: eng:dates-expire-zoneless
 name: Dates expire zoneless
-decisions:
-  - id: eng:dates-expire-zoneless
-    decision: >-
-      A coarse DATE never needs a time zone to expire correctly: compare it as a date in one named
-      zone, and give the rule a grace period long enough to swallow the ambiguity. A boundary that
-      moves by less than a day inside a week-long grace cannot change what anyone sees.
-context:
-  why: >-
-    resolving each record against its own local zone would be precise and buy nothing — a sufficient
-    grace already covers a wider margin than every zone on earth spans
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:dates-expire-zoneless)
+decision: >-
+  A coarse DATE never needs a time zone to expire correctly: compare it as a date in one named zone,
+  and give the rule a grace period long enough to swallow the ambiguity. A boundary that moves by
+  less than a day inside a week-long grace cannot change what anyone sees.
+context: >-
+  Resolving each record against its own local zone would be precise and buy nothing — a sufficient
+  grace already covers a wider margin than every zone on earth spans.

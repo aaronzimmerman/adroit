@@ -1,12 +1,9 @@
+id: data:derive-dont-count
 name: Derive dont count
-decisions:
-  - id: data:derive-dont-count
-    decision: >-
-      Derivable counts are computed at read time from the rows they count, never kept as stored
-      counters.
-context:
-  why: >-
-    de-skinned from an occupancy-counting ruling: a stored counter is an invariant every future path
-    must keep — dozens of mutation sites, an honesty sweep, a race guard — while deriving from the
-    counted rows deletes the sites, the race, and the drift class
-  src: adroit seed v1, distilled from StageDoor's ledger (data:derive-dont-count)
+decision: >-
+  Derivable counts are computed at read time from the rows they count, never kept as stored
+  counters.
+context: >-
+  A stored counter is an invariant every future path must keep — dozens of mutation sites, an
+  honesty sweep, a race guard — while deriving from the counted rows deletes the sites, the race,
+  and the drift class.

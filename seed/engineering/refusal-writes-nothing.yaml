@@ -1,22 +1,19 @@
+id: eng:refusal-writes-nothing
 name: Refusal writes nothing
-decisions:
-  - id: eng:refusal-writes-nothing
-    decision: >-
-      An action either fully happens or fully doesn't. A refusal writes nothing: validation precedes
-      the first write, so an endpoint that answers no leaves the world exactly as it found it —
-      every retry, debug session and operator reading trusts that. And a state transition is atomic:
-      a record moves from one valid state directly to another in a single write; an
-      invariant-violating intermediate state is never observable, however briefly, because at
-      production traffic "briefly" is an audience.
-    rejected:
-      - >-
-        write-then-validate — a refused action leaves deposits, repeated attempts accumulate
-        half-state, and responses stop being evidence of anything
-      - >-
-        multi-statement transitions — the moment between writes is a state nobody approved, visible
-        to every concurrent reader
-context:
-  why: >-
-    a write path that stamps state before later gates can refuse, or transitions in two writes,
-    makes refusals leave deposits and exposes moments nobody approved
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:refusal-writes-nothing)
+decision: >-
+  An action either fully happens or fully doesn't. A refusal writes nothing: validation precedes the
+  first write, so an endpoint that answers no leaves the world exactly as it found it — every retry,
+  debug session and operator reading trusts that. And a state transition is atomic: a record moves
+  from one valid state directly to another in a single write; an invariant-violating intermediate
+  state is never observable, however briefly, because at production traffic "briefly" is an
+  audience.
+rejected:
+  - >-
+    write-then-validate — a refused action leaves deposits, repeated attempts accumulate half-state,
+    and responses stop being evidence of anything
+  - >-
+    multi-statement transitions — the moment between writes is a state nobody approved, visible to
+    every concurrent reader
+context: >-
+  A write path that stamps state before later gates can refuse, or transitions in two writes, makes
+  refusals leave deposits and exposes moments nobody approved.

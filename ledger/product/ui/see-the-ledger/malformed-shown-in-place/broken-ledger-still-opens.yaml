@@ -1,0 +1,9 @@
+id: ui:broken-ledger-still-opens
+name: Broken ledger still opens
+decision: >-
+  An invalid ledger still opens and shows everything that can be read; nothing is refused for being
+  broken.
+rejected:
+  - >-
+    refusing to load a ledger until it is valid — a broken ledger is exactly the one a user needs to
+    look at, and refusing is a fence (inform-don't-fence)

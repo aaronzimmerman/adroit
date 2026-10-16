@@ -1,0 +1,9 @@
+id: ui:commit-never-gated
+name: Commit never gated
+decision: The UI never gates the commit.
+rejected:
+  - >-
+    a hard gate holding the commit until the suspects are read — fencing the action for a trusted
+    expert is what inform-don't-fence forbids; the guard is the dubious mark, information that
+    outlives the commit instead of a door in front of it
+  - a blocking confirmation on the load-bearing edit itself — fencing the gesture re-litigates it

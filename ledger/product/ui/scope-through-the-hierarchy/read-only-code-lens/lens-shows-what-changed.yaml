@@ -1,0 +1,3 @@
+id: ui:lens-shows-what-changed
+name: Lens shows what changed
+decision: Through the lens a user sees what changed in the codebase because a decision changed.

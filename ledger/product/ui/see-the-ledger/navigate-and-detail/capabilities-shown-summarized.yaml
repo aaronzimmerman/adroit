@@ -1,0 +1,9 @@
+id: ui:capabilities-shown-summarized
+name: Capabilities shown summarized
+decision: >-
+  Each capability grafted on the current node's path is summarized in the details panel by its root
+  node's decision.
+rejected:
+  - >-
+    the capability's whole subtree inline — it buries the node being read; the root's decision
+    already states what an includer takes on

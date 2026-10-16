@@ -1,17 +1,14 @@
+id: eng:own-action-visible
 name: Own action visible
-decisions:
-  - id: eng:own-action-visible
-    decision: >-
-      A user's own action is immediately visible: after their mutation, every surface showing that
-      state reflects it — by refetch or local update — and the user never reloads to see the
-      consequence of what they just did. The client-side sibling of outcome honesty: the server
-      tells the truth about what it did, and the UI shows the truth of what you did.
-    rejected:
-      - >-
-        load-time freshness — data fetched once per visit, so your own change appears only next
-        time, which reads as the app having ignored you
-context:
-  why: >-
-    a list fed by a once-per-load fetch omits the record the user just changed until they reload,
-    which reads as the app having ignored them
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:own-action-visible)
+decision: >-
+  A user's own action is immediately visible: after their mutation, every surface showing that state
+  reflects it — by refetch or local update — and the user never reloads to see the consequence of
+  what they just did. The client-side sibling of outcome honesty: the server tells the truth about
+  what it did, and the UI shows the truth of what you did.
+rejected:
+  - >-
+    load-time freshness — data fetched once per visit, so your own change appears only next time,
+    which reads as the app having ignored you
+context: >-
+  A list fed by a once-per-load fetch omits the record the user just changed until they reload,
+  which reads as the app having ignored them.

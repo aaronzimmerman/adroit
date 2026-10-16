@@ -1,0 +1,10 @@
+id: ui:edit-offers-clearing
+name: Edit offers clearing
+decision: >-
+  Editing a dubious node offers to clear its mark in the same commit, checked by default, and the
+  person editing can uncheck it.
+rejected:
+  - every edit clearing the mark — a typo fix says nothing about whether the node still holds
+  - >-
+    no edit clearing the mark — the person who read the node through and edited it is the one who
+    knows it holds, and a separate confirm is a needless second act

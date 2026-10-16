@@ -1,0 +1,16 @@
+id: eng:thin-server-owns-files
+name: Thin server owns files
+decision: >-
+  A thin local server owns every read and write of the ledger's files and the facts beside them: git
+  operations and the code lens.
+rejected:
+  - >-
+    a browser-only app on the File System Access API — no git, no code-lens measurement, and the
+    ledger's single write path would live inside whichever browser grants the permission
+  - >-
+    a fat client that owns ledger logic with the server as a dumb pipe — the decision-edit
+    contract's validation would live on the wrong side of the boundary, unenforceable at the single
+    write path
+context: >-
+  The ledger files are the system of record, so their one write path belongs where git and the code
+  live.

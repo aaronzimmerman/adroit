@@ -1,12 +1,8 @@
+id: eng:portable-sql
 name: Portable SQL
-decisions:
-  - id: eng:portable-sql
-    decision: >-
-      No query ships that the test suite cannot execute: every application query runs on both the
-      test and production database engines, and functions only one engine supports are banned from
-      queries.
-context:
-  why: >-
-    de-skinned from engine-specific nouns: a query the test engine cannot parse is a query no test
-    can execute, so engine-only and untested ship as a pair
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:portable-sql)
+decision: >-
+  No query ships that the test suite cannot execute: every application query runs on both the test
+  and production database engines, and functions only one engine supports are banned from queries.
+context: >-
+  A query the test engine cannot parse is a query no test can execute, so engine-only and untested
+  ship as a pair.

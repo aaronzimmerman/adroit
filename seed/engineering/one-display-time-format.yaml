@@ -1,11 +1,8 @@
+id: eng:one-display-time-format
 name: One display time format
-decisions:
-  - id: eng:one-display-time-format
-    decision: >-
-      Human-facing times and dates render in ONE app-wide display format matched to the audience,
-      applied on every surface, whatever form times take in storage or transit.
-context:
-  why: >-
-    de-skinned from a 12-hour-clock ruling: one app-wide display convention beats per-surface drift,
-    where sweeps keep finding stragglers rendering the raw storage format
-  src: adroit seed v1, distilled from StageDoor's ledger (cal:twelve-hour-clock)
+decision: >-
+  Human-facing times and dates render in ONE app-wide display format matched to the audience,
+  applied on every surface, whatever form times take in storage or transit.
+context: >-
+  One app-wide display convention beats per-surface drift, where sweeps keep finding stragglers
+  rendering the raw storage format.

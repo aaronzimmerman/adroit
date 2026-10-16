@@ -1,11 +1,8 @@
+id: eng:consolidate-the-rule
 name: Consolidate the rule
-decisions:
-  - id: eng:consolidate-the-rule
-    decision: >-
-      Consolidate the rule, not the query: extract high-blast-radius composite predicates on second
-      occurrence; never a parameter that changes the rule.
-context:
-  why: >-
-    what costs is a second copy of a DECISION, not a second query — hand-copied rules ship predicate
-    bugs invisible to every gate, while god-queries just trade drift risk for coupling risk
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:consolidate-the-rule)
+decision: >-
+  Consolidate the rule, not the query: extract high-blast-radius composite predicates on second
+  occurrence; never a parameter that changes the rule.
+context: >-
+  What costs is a second copy of a DECISION, not a second query — hand-copied rules ship predicate
+  bugs invisible to every gate, while god-queries just trade drift risk for coupling risk.

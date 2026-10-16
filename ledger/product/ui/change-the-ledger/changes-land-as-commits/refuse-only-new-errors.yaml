@@ -1,0 +1,5 @@
+id: ui:refuse-only-new-errors
+name: Refuse only new errors
+decision: >-
+  The UI refuses a change only for check errors the change itself introduces, so a ledger that
+  opened broken can be repaired one change at a time.

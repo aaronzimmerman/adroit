@@ -1,11 +1,8 @@
+id: principle:derive-dont-materialize
 name: Derive dont materialize
-decisions:
-  - id: principle:derive-dont-materialize
-    decision: >-
-      Derive, never materialize — a fact derivable from the rows that constitute it is derived at
-      read time; no stored counters or mirror flags kept honest by secondary mutations.
-context:
-  why: >-
-    a materialized copy is an invariant every future path must maintain — one stored counter needed
-    dozens of mutation sites, an honesty sweep, and a race guard
-  src: adroit seed v1, distilled from StageDoor's ledger (principle:derive-dont-materialize)
+decision: >-
+  Derive, never materialize — a fact derivable from the rows that constitute it is derived at read
+  time; no stored counters or mirror flags kept honest by secondary mutations.
+context: >-
+  A materialized copy is an invariant every future path must maintain — one stored counter needed
+  dozens of mutation sites, an honesty sweep, and a race guard.

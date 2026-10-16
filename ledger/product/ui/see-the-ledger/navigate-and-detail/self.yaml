@@ -1,0 +1,13 @@
+id: ui:navigation-panel-left
+name: Navigate and detail
+decision: >-
+  A navigation panel on the left shows the hierarchy from the roots down, and from it the user goes
+  up a level, goes down, or selects any child as the current node.
+rejected:
+  - >-
+    a star map explored as one continuous space — flying, zooming and self-similar named wholes were
+    not helpful for reading what binds a node; the hierarchy is the thing to walk
+context: >-
+  "a navigation panel on the left that lets me go up and down the hierarchy and then a details panel
+  on the right with the current node's decisions, and the ability to edit... a lot of the star-field
+  stuff goes away, it isn't really helpful"; models keep their own read because they are not nodes.

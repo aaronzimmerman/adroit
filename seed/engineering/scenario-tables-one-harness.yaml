@@ -1,24 +1,20 @@
+id: eng:scenario-tables-one-harness
 name: Scenario tables one harness
-decisions:
-  - id: eng:scenario-tables-one-harness
-    decision: >-
-      A cross-cutting rule surface — permissions, endpoint access, rate limits, visibility — is
-      tested as a DECLARED SCENARIO TABLE: a human-readable artifact that enumerates the cases (who,
-      through which door, expecting what answer) and IS the readable ledger of expected behavior,
-      executed by ONE harness that stages, runs and asserts every row. A new surface ships with its
-      row, and where the surface set is enumerable the harness fails on an undeclared entry, so
-      coverage is forced, not remembered. Bespoke per-case test classes for these surfaces are the
-      rejected shape.
-    rejected:
-      - >-
-        hand-written per-case integration tests for matrix-shaped rules — each case re-stages the
-        world, the expected behavior is scattered across test methods nobody can read as a policy,
-        and a new endpoint is covered only if someone remembers
-      - >-
-        the table without the forcing shape — a declared artifact that tolerates undeclared surfaces
-        is documentation, not a net
-context:
-  why: >-
-    per-case tests of matrix-shaped rules bloat into staging boilerplate while the policy they
-    encode stays unreadable and coverage stays voluntary
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:scenario-tables-one-harness)
+decision: >-
+  A cross-cutting rule surface — permissions, endpoint access, rate limits, visibility — is tested
+  as a DECLARED SCENARIO TABLE: a human-readable artifact that enumerates the cases (who, through
+  which door, expecting what answer) and IS the readable ledger of expected behavior, executed by
+  ONE harness that stages, runs and asserts every row. A new surface ships with its row, and where
+  the surface set is enumerable the harness fails on an undeclared entry, so coverage is forced, not
+  remembered. Bespoke per-case test classes for these surfaces are the rejected shape.
+rejected:
+  - >-
+    hand-written per-case integration tests for matrix-shaped rules — each case re-stages the world,
+    the expected behavior is scattered across test methods nobody can read as a policy, and a new
+    endpoint is covered only if someone remembers
+  - >-
+    the table without the forcing shape — a declared artifact that tolerates undeclared surfaces is
+    documentation, not a net
+context: >-
+  Per-case tests of matrix-shaped rules bloat into staging boilerplate while the policy they encode
+  stays unreadable and coverage stays voluntary.

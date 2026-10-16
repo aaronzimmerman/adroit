@@ -1,0 +1,8 @@
+id: ui:findings-list-travels
+name: Findings list travels
+decision: >-
+  Every finding also appears in one list, and selecting a finding takes the user to its place.
+rejected:
+  - >-
+    a findings list with no place in the ledger — a finding the user has to go hunting for is a
+    retrieval failure

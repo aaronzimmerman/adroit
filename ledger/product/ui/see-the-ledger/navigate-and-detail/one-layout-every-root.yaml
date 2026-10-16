@@ -1,0 +1,9 @@
+id: ui:one-layout-every-root
+name: One layout every root
+decision: >-
+  The product, capability and engineering trees all use the same navigation and details layout.
+rejected:
+  - >-
+    a native visual treatment per root (a star map for product trees, peer groves for engineering) —
+    every root is now nodes in a hierarchy, and what a reader needs at any node is the same: its
+    decisions and everything binding it

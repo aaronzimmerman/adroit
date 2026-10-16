@@ -1,0 +1,5 @@
+id: eng:browser-is-pure-view
+name: Browser is pure view
+decision: >-
+  The browser is a pure view: it never touches the disk, and everything it shows arrives from the
+  server.

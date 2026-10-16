@@ -1,0 +1,7 @@
+id: ui:delete-a-node
+name: Delete a node
+decision: A user can delete a node, which deletes everything nested beneath it.
+rejected:
+  - >-
+    re-parenting the deleted node's children automatically — deleting a feature deletes its parts;
+    what should survive is moved out first, as its own act

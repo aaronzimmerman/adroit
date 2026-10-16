@@ -1,0 +1,3 @@
+id: ui:reparent-is-a-move
+name: Reparent is a move
+decision: "A node's parent is not a field: re-parenting is a move, never a text edit."

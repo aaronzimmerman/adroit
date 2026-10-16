@@ -1,0 +1,8 @@
+id: ui:no-privileged-id-lookup
+name: No privileged ID lookup
+decision: >-
+  There is no privileged id lookup: a pasted id finds its decision because its text matches.
+rejected:
+  - >-
+    id or title lookup as the primary find — the user does not hold ids in their head; what they
+    remember is the rule's words

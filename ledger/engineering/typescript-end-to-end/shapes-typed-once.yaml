@@ -1,0 +1,3 @@
+id: eng:shapes-typed-once
+name: Shapes typed once
+decision: The node and view shapes are typed once and shared across the server-view boundary.

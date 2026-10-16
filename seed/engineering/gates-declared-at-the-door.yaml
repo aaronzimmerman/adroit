@@ -1,19 +1,15 @@
+id: eng:gates-declared-at-the-door
 name: Gates declared at the door
-decisions:
-  - id: eng:gates-declared-at-the-door
-    decision: >-
-      A gate that is the same at every endpoint it covers is DECLARED on the endpoint, where policy
-      checks can read it, never re-coded in each handler body. A gate whose order against the access
-      check matters stays in the body where the order can be read. The declarations never supply
-      expected answers; the policy tables do.
-    rejected:
-      - a pre-method entitlement filter — a request filter cannot follow an in-body access check
-      - >-
-        a hook inside the capability check that fires entitlement — implicit, and ambiguous when an
-        endpoint runs two checks
-context:
-  why: >-
-    de-skinned from admin- and paid-gate specifics: hundreds of per-handler gate lines made the gate
-    a convention each endpoint had to remember, while a declaration lets policy tooling read what
-    each endpoint promises
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:gates-declared-at-the-door)
+decision: >-
+  A gate that is the same at every endpoint it covers is DECLARED on the endpoint, where policy
+  checks can read it, never re-coded in each handler body. A gate whose order against the access
+  check matters stays in the body where the order can be read. The declarations never supply
+  expected answers; the policy tables do.
+rejected:
+  - a pre-method entitlement filter — a request filter cannot follow an in-body access check
+  - >-
+    a hook inside the capability check that fires entitlement — implicit, and ambiguous when an
+    endpoint runs two checks
+context: >-
+  Hundreds of per-handler gate lines made the gate a convention each endpoint had to remember, while
+  a declaration lets policy tooling read what each endpoint promises.

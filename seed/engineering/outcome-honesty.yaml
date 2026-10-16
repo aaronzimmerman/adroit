@@ -1,20 +1,17 @@
+id: eng:outcome-honesty
 name: Outcome honesty
-decisions:
-  - id: eng:outcome-honesty
-    decision: >-
-      An action's response reports what actually happened: when the system's outcome diverges from
-      what was requested — held, transformed, deferred, redirected — the divergence is part of the
-      response, and the surface that took the action shows it. A success that isn't one is a bug,
-      the same bug as an error with no banner.
-    rejected:
-      - >-
-        returning success and letting the user discover the divergence later — a user whose
-        submission was silently held had no path to learn why it never went live
-      - >-
-        deciding a bespoke UX per divergence — the response carries the fact; what the surface
-        offers next derives from the standing decisions about that fact
-context:
-  why: >-
-    a request silently held behind a success response leaves the user no way to learn what the
-    system actually did
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:outcome-honesty)
+decision: >-
+  An action's response reports what actually happened: when the system's outcome diverges from what
+  was requested — held, transformed, deferred, redirected — the divergence is part of the response,
+  and the surface that took the action shows it. A success that isn't one is a bug, the same bug as
+  an error with no banner.
+rejected:
+  - >-
+    returning success and letting the user discover the divergence later — a user whose submission
+    was silently held had no path to learn why it never went live
+  - >-
+    deciding a bespoke UX per divergence — the response carries the fact; what the surface offers
+    next derives from the standing decisions about that fact
+context: >-
+  A request silently held behind a success response leaves the user no way to learn what the system
+  actually did.

@@ -1,0 +1,12 @@
+id: ui:search-any-text
+name: Search any text
+decision: >-
+  Finding is a match on any text in the ledger directory — names, decision text, rejected
+  alternatives, context, a view's field names, and ids.
+rejected:
+  - >-
+    search scoped to decision text only — the remembered phrase may live in a rejected alternative
+    or a context note, and a view's field name is a legitimate way in
+context: >-
+  "match on the decision's key text, but I think we can just search on any of the text... and it all
+  shows up with the context of where the match is found"

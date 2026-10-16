@@ -1,0 +1,3 @@
+id: ui:selecting-a-hit-travels
+name: Selecting a hit travels
+decision: Selecting a hit makes its node the current node in both panels.

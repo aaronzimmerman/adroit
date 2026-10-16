@@ -1,0 +1,8 @@
+id: ui:dubious-set-by-hand
+name: Dubious marks
+decision: >-
+  A person can mark a node dubious from the UI on observing a contradiction, stating what they saw.
+context: >-
+  "let's make it a field after all. That way a person can also set it manually if a contradiction is
+  observed". The mark's semantics (one line of reason, cascade, every reason kept, clearing never
+  cascades) are the methodology's (ADROIT.md, Dubious).

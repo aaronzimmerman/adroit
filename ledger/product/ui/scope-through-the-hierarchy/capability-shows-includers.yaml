@@ -1,0 +1,3 @@
+id: ui:capability-shows-includers
+name: Capability shows includers
+decision: From a capability, the user sees every node that includes it.

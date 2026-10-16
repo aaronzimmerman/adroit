@@ -1,0 +1,9 @@
+id: ui:malformed-shown-in-place
+name: Malformed shown in place
+decision: >-
+  The tool finds every place an opened ledger is invalid or malformed and shows each finding on the
+  node or directory at fault.
+context: >-
+  "validation of a ledger itself... it should be able to find places where the ledger is invalid or
+  malformed"; "it opens and shows what it can". The rules themselves are not listed here: the
+  methodology's records are the set (eng:enumeration-is-drift).

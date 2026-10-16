@@ -1,0 +1,3 @@
+id: ui:hit-shows-its-place
+name: Hit shows its place
+decision: Every hit shows what matched and where it lives in the hierarchy.

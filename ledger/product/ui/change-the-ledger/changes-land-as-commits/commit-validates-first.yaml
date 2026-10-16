@@ -1,0 +1,5 @@
+id: ui:commit-validates-first
+name: Commit validates first
+decision: >-
+  The UI validates a change against the check's rules before committing, and a refused commit writes
+  nothing.

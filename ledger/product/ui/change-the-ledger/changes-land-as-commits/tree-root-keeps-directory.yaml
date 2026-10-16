@@ -1,0 +1,5 @@
+id: ui:tree-root-keeps-directory
+name: Tree root keeps directory
+decision: >-
+  Renaming the root node of a product or capability tree keeps its directory, which is the tree's
+  name.

@@ -1,0 +1,9 @@
+id: principle:concept-lives-in-its-module
+name: Concept lives in its module
+decision: >-
+  A concept lives only inside the module that owns it, and other modules neither hold it, serve by
+  it, nor disclaim it.
+rejected:
+  - >-
+    defensive negative statements ("this module knows no X") — the mention is the leak: it imports
+    the concept into a place that should have no word for it; the guard is stated once, here

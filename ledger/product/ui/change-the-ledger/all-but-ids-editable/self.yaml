@@ -1,0 +1,13 @@
+id: ui:all-but-id-editable
+name: All but ids editable
+decision: >-
+  Every field of a node is editable from the UI — its name, decision, rejected alternatives,
+  references, includes, context, dubious mark and questions — except its id.
+rejected:
+  - >-
+    an editable id — a rename reads like a one-field edit but silently breaks every citation bound
+    to the name, since references bind to ids precisely so paths can move
+  - >-
+    locking the dangerous-looking fields (links, rejected) as well — the guard against a careless
+    edit is the implications shown at the moment of change, not field locks
+context: "\"The ID is not editable. Everything else is.\""

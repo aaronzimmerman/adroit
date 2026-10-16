@@ -1,0 +1,10 @@
+id: ui:ruling-shows-one-state
+name: Ruling shows one state
+decision: >-
+  A ruling's in-flight edits show as the working diff and vanish at commit; the UI never renders
+  proposed text beside a committed decision.
+rejected:
+  - >-
+    enduring dual state for rulings too — "when we make a ruling that is a point in time"; versioned
+    ruling layers reintroduce the decision states the corpus rejected, and source control already
+    carries a ruling's history

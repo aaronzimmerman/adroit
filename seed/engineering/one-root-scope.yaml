@@ -1,11 +1,7 @@
+id: principle:one-root-scope
 name: One root scope
-decisions:
-  - id: principle:one-root-scope
-    decision: >-
-      One tenant/owner entity is the root of all ownership and scoping: it owns entities,
-      entitlements, events, and context, and tools key to it, never to an intermediate container.
-context:
-  why: >-
-    de-skinned from a company-root ruling: keying ownership to intermediate containers fragments
-    scope that belongs to the one owning entity
-  src: adroit seed v1, distilled from StageDoor's ledger (principle:company-root)
+decision: >-
+  One tenant/owner entity is the root of all ownership and scoping: it owns entities, entitlements,
+  events, and context, and tools key to it, never to an intermediate container.
+context: >-
+  Keying ownership to intermediate containers fragments scope that belongs to the one owning entity.

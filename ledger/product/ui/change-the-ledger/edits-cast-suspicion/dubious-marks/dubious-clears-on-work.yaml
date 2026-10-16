@@ -1,0 +1,5 @@
+id: ui:dubious-clears-on-work
+name: Dubious clears on work
+decision: >-
+  A person confirms a dubious node from the UI after reading it through, which removes its mark in a
+  commit.

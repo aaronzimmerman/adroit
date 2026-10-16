@@ -1,0 +1,8 @@
+id: ui:commit-marks-suspects
+name: Commit marks suspects
+decision: The UI's commit writes the dubious mark onto every node the change makes suspect.
+rejected:
+  - >-
+    pure inline information that evaporates at commit — a revised root silently landing over an
+    unreviewed subtree, with nothing left behind, is exactly the attention failure the ledger exists
+    to catch

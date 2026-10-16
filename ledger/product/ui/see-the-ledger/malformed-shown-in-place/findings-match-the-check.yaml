@@ -1,0 +1,7 @@
+id: ui:findings-match-the-check
+name: Findings match the check
+decision: The findings are the ones the ledger check reports, from the same rules.
+rejected:
+  - >-
+    a second set of validation rules inside the UI beside the check — two validators drift apart;
+    one definition serves both (single-resolver)

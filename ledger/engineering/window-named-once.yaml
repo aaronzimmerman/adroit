@@ -1,9 +1,6 @@
+id: eng:window-named-once
 name: Window named once
-decisions:
-  - id: eng:window-named-once
-    decision: A time window or TTL is named once where defined; consumers derive from that one name.
-context:
-  why: >-
-    the same constant name once meant two durations hundreds of times apart in two files — identical
-    names, silently divergent values
-  src: adroit seed v1, distilled from StageDoor's ledger (eng:window-named-once)
+decision: A time window or TTL is named once where defined; consumers derive from that one name.
+context: >-
+  The same constant name once meant two durations hundreds of times apart in two files — identical
+  names, silently divergent values.

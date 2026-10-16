@@ -1,0 +1,3 @@
+id: ui:create-a-node
+name: Create a node
+decision: A user can create a node in its place in the tree.

@@ -1,0 +1,13 @@
+id: principle:modules-reach-by-contract
+name: Modules reach by contract
+decision: >-
+  A module's entities never leak into another module's entities; the only cross-module reach is what
+  the module's interface declares.
+rejected:
+  - >-
+    convenience joins across modules outside the declared interface — the monolithic-entity gravity
+    this principle exists to resist: one container entity accreting every module's concepts, which
+    takes a remodel to tease apart
+context: >-
+  A monolithic entity that accreted every module's concepts took a remodel to tease apart, so
+  cross-module reach is by declared interface only.

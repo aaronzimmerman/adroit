@@ -1,13 +1,9 @@
+id: ui:change-shows-implications
 name: Change shows implications
-decisions:
-  - id: ui:change-shows-implications
-    decision: >-
-      When a user changes a decision, they see its implications at the moment of change rather than
-      afterward: every node that depends on it.
+decision: >-
+  When a user changes a decision, they see its implications at the moment of change rather than
+  afterward: every node that depends on it.
 questions: [How do the implications present?]
-context:
-  why: >-
-    stated at need level on purpose — asked to choose between a named list and a map treatment, the
-    user ruled only the need: "when a user changes a decision, they can see an implication of such a
-    change"
-  src: ui product-tree session 2026-10-07
+context: >-
+  Stated at need level on purpose: "when a user changes a decision, they can see an implication of
+  such a change".

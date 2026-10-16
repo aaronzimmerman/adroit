@@ -1,0 +1,9 @@
+id: ui:changes-land-as-commits
+name: Changes land as commits
+decision: The UI lands each change as one atomic commit across every file it touches.
+rejected:
+  - >-
+    keeping these operations as a capability the change branch includes — only this branch uses
+    them, so a capability adds an include and a second place to look with nothing repeating
+context: >-
+  What a pending entry, a migration and a landing are is the methodology's (ADROIT.md, Models).

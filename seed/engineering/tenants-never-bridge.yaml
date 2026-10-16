@@ -1,20 +1,17 @@
+id: principle:tenants-never-bridge
 name: Tenants never bridge
-decisions:
-  - id: principle:tenants-never-bridge
-    decision: >-
-      Tenant data is always insulated: nothing threads one tenant's data into another tenant's
-      tools. A person holding access in several tenants is several separate contexts, never a bridge
-      — connect gestures, shared entities and attachment offers reach only within the owning tenant,
-      whatever the person could otherwise see elsewhere.
-    rejected:
-      - >-
-        access-derived reach (resources you can access spanning tenants) — a grant made in one
-        tenant never anticipated its data appearing inside another's tool
-      - >-
-        cross-tenant convenience bridges for people who work in several tenants — the convenience is
-        one person's; the exposure is both tenants'
-context:
-  why: >-
-    de-skinned from a company-data ruling: multi-tenant membership must mean several separate
-    contexts, because a grant made in one tenant never consented to exposure in another
-  src: adroit seed v1, distilled from StageDoor's ledger (principle:company-data-insulated)
+decision: >-
+  Tenant data is always insulated: nothing threads one tenant's data into another tenant's tools. A
+  person holding access in several tenants is several separate contexts, never a bridge — connect
+  gestures, shared entities and attachment offers reach only within the owning tenant, whatever the
+  person could otherwise see elsewhere.
+rejected:
+  - >-
+    access-derived reach (resources you can access spanning tenants) — a grant made in one tenant
+    never anticipated its data appearing inside another's tool
+  - >-
+    cross-tenant convenience bridges for people who work in several tenants — the convenience is one
+    person's; the exposure is both tenants'
+context: >-
+  Multi-tenant membership must mean several separate contexts, because a grant made in one tenant
+  never consented to exposure in another.

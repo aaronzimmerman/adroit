@@ -1,10 +1,6 @@
+id: ui:see-the-ledger
 name: See the ledger
-decisions:
-  - id: ui:see-the-ledger
-    decision: >-
-      A user can walk the hierarchy of every root and locate any node.
-context:
-  why: >-
-    the seeing cluster of the use-case walk — bird's-eye view, tree walking, root switching, and
-    finding were named as distinct wants and cluster as one need
-  src: ui product-tree session 2026-10-06
+decision: A user can walk the hierarchy of every root and locate any node.
+context: >-
+  Bird's-eye view, tree walking, root switching and finding were named as distinct wants and cluster
+  as one need.
