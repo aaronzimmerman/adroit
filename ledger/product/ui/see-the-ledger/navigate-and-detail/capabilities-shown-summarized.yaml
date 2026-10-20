@@ -1,12 +1,12 @@
 id: ui:capabilities-shown-summarized
 name: Capabilities shown summarized
 decision: >-
-  Each capability a node includes is shown beneath that node with its children, as a grafted
-  subtree summarized by its root node's decision.
+  Each capability a node includes is shown beneath that node with its children, as a grafted subtree
+  summarized by its root node's decision.
 rejected:
   - >-
     the capability's whole subtree inline — it buries the node being read; the root's decision
     already states what an includer takes on
   - >-
-    a capability included higher up shown on every node below — a capability is grafted beneath
-    its includer only, and is no rule over that includer's other descendants
+    a capability included higher up shown on every node below — a capability is grafted beneath its
+    includer only, and is no rule over that includer's other descendants

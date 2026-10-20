@@ -261,7 +261,7 @@ test('includes must name a capability, once', () => {
   assert.match(own[0].message, /'capa', the capability it lives in/);
 });
 
-test('the scoped read: engineering, the ancestors, the target, and every included capability WHOLE — nothing else', () => {
+test('the scoped read: engineering, the ancestors and the target — a capability an ancestor includes is that ancestor\'s child, not in scope', () => {
   const s = storeOf(BASE());
   const r = scopedRead(s, ['app:detail']);
   const role = Object.fromEntries([...r.role].map(([rel, x]) => [rel, x]));
@@ -275,21 +275,33 @@ test('the scoped read: engineering, the ancestors, the target, and every include
     'product/app/tools/self.yaml': 'ancestor',
     'product/app/tools/one-tool/self.yaml': 'ancestor',
     'product/app/tools/one-tool/detail.yaml': 'target',
-    // capa is included by the app root: its whole tree joins the scope of every descendant…
-    'capabilities/capa/self.yaml': 'capability',
-    'capabilities/capa/leaf-a.yaml': 'capability',
-    // …and what capa's own nodes include joins with it, transitively
-    'capabilities/capb/self.yaml': 'capability',
+    // capa is included by the app root: grafted beneath the app, it is a sibling of tools, not above detail
   });
-  assert.ok(!r.role.has('capabilities/capc/self.yaml'), 'a capability nobody includes stays out');
   assert.deepEqual(r.nodes.map((n) => n.rel).slice(0, 8), [
     'engineering/a-principle.yaml', 'engineering/a-rule.yaml', 'product/app/self.yaml',
     'product/app/on-phone.yaml', 'product/app/sibling.yaml',
     'product/app/tools/self.yaml', 'product/app/tools/one-tool/self.yaml', 'product/app/tools/one-tool/detail.yaml',
   ], 'reading order: engineering (principles first), then the chain root-first, each ancestor\'s leaves after its self.yaml');
-  // the sibling, read on its own, sees the include
-  const sib = scopedRead(s, ['product/app/sibling.yaml']);
-  assert.equal(sib.role.get('capabilities/capa/self.yaml'), 'capability');
+  // nor does a leaf beside the includer read it
+  assert.ok(!scopedRead(s, ['product/app/sibling.yaml']).role.has('capabilities/capa/self.yaml'));
+});
+
+test('the scoped read: a node inside a capability reads the path above the graft — each includer, with its ancestors', () => {
+  const s = storeOf(BASE());
+  // capb is grafted beneath capa's leaf-a, and capa beneath the app root
+  const r = scopedRead(s, ['capb:only-b']);
+  const role = Object.fromEntries([...r.role].filter(([, x]) => x !== 'engineering'));
+  assert.deepEqual(role, {
+    'capabilities/capb/self.yaml': 'target',
+    'capabilities/capa/self.yaml': 'includer',
+    'capabilities/capa/leaf-a.yaml': 'includer',
+    'product/app/self.yaml': 'includer',
+    'product/app/on-phone.yaml': 'includer',
+    'product/app/sibling.yaml': 'includer',
+  });
+  assert.deepEqual(r.nodes.filter((n) => r.role.get(n.rel) !== 'engineering').map((n) => n.rel).at(-1),
+    'capabilities/capb/self.yaml', 'the path above the graft reads before the target');
+  assert.ok(!scopedRead(s, ['capc:only-c']).role.has('product/app/self.yaml'), 'a capability nobody includes has nothing above it');
 });
 
 test('the scoped read restores a split-out former peer of an ancestor — and pulls in no nested directory', () => {
@@ -318,6 +330,11 @@ test('the scoped read: --subtree adds the descendants; a target is an id, a node
   const sub = scopedRead(s, ['story:app'], { subtree: true });
   assert.equal(sub.role.get('product/app/tools/one-tool/detail.yaml'), 'descendant', '--subtree still reaches the nested directories');
   assert.ok(!scopedRead(s, ['story:app']).role.has('product/app/tools/self.yaml'), 'without --subtree, a nested directory stays out');
+  // the capabilities grafted beneath a target are among its descendants, transitively
+  assert.equal(sub.role.get('capabilities/capa/leaf-a.yaml'), 'descendant');
+  assert.equal(sub.role.get('capabilities/capb/self.yaml'), 'descendant');
+  assert.ok(!sub.role.has('capabilities/capc/self.yaml'), 'a capability nobody includes stays out');
+  assert.ok(!scopedRead(s, ['story:app']).role.has('capabilities/capa/self.yaml'), 'without --subtree, its own includes stay out');
   assert.throws(() => scopedRead(s, ['app:nope']), /no decision or ledger path matches: app:nope/);
   // a target inside engineering is the TARGET, not merely engineering
   assert.equal(scopedRead(s, ['eng:a-rule']).role.get('engineering/a-rule.yaml'), 'target');
@@ -331,7 +348,7 @@ test('dump --scope writes ONE line per node — one decision — with roles, and
     assert.deepEqual(out[0], { domains: { eng: 'Engineering.', app: 'The app.' } });
     assert.ok(out.every((l) => l.domains || l.node), 'only the domains and the nodes — no other line kind');
     const nodes = out.filter((l) => l.node);
-    assert.equal(nodes.length, 11, 'one line per node in scope');
+    assert.equal(nodes.length, 8, 'one line per node in scope');
     const root = nodes.find((l) => l.node === 'product/app/self.yaml');
     assert.deepEqual(root, {
       node: 'product/app/self.yaml', id: 'story:app', name: 'App',
@@ -341,9 +358,9 @@ test('dump --scope writes ONE line per node — one decision — with roles, and
     assert.ok(nodes.every((l) => !('severed' in l) && !('severable' in l) && !('decisions' in l)),
       'no sever marks and no decision list on any line');
     assert.deepEqual(nodes.map((l) => l.scope_role).filter((x, i, a) => a.indexOf(x) === i),
-      ['engineering', 'ancestor', 'target', 'capability']);
+      ['engineering', 'ancestor', 'target']);
     assert.ok(nodes.every((l) => !('dubious' in l) && !('questions' in l) && !('context' in l)));
-    assert.match(r.stderr, /^11 of 12 decisions in scope \(2 engineering, 5 ancestor, 1 target, 3 capability\)\n$/);
+    assert.match(r.stderr, /^8 of 12 decisions in scope \(2 engineering, 5 ancestor, 1 target\)\n$/);
   });
 });
 
@@ -531,7 +548,7 @@ test('a model: id is retired — in the models directory or in a node, it fails 
   const inModels = errorsFor(edit((f) => { f['models/model.thing.yaml'] = { id: 'model:thing', decision: 'A thing.', schema: { fields: { id: 'int' } } }; }));
   assert.deepEqual(rules(inModels), ['retired-kind']);
   assert.equal(inModels[0].id, 'model:thing');
-  assert.match(inModels[0].message, /^'model:' is retired — models were retired for views .* storage lives in the migrations and Java models/);
+  assert.match(inModels[0].message, /^'model:' is retired — models were retired for views .* storage lives in the code, in its migrations and models/);
   const inNode = errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'model:sibling'; }));
   assert.deepEqual(rules(inNode), ['retired-kind']);
   assert.ok(!kindOf('model:thing').startsWith('model'), 'model is no longer a reserved kind');
@@ -541,8 +558,8 @@ test('a model: id is retired — in the models directory or in a node, it fails 
 
 test('shape:, tables: and pending: on a view are retired keys, each saying where the thing went', () => {
   for (const [key, value, msg] of [
-    ['shape', { fields: { x: 'scalar' } }, /typed schema: — the legacy shape: block went with the models; storage lives in the migrations and Java models/],
-    ['tables', ['thing'], /storage is memorialized by the migrations and Java models/],
+    ['shape', { fields: { x: 'scalar' } }, /typed schema: — the legacy shape: block went with the models; storage lives in the code, in its migrations and models/],
+    ['tables', ['thing'], /storage is memorialized by the code, in its migrations and models/],
     ['pending', { later: 'not built' }, /a view states current truth only/],
   ]) {
     const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'][key] = value; }));
@@ -946,13 +963,14 @@ test('the hierarchy is the filesystem: nodes nest under their parent node, group
   assert.equal(t.nodes, 12);
 });
 
-test('a node\'s detail is whole — every field, the notes included, and what reaches it from above', () => {
+test('a node\'s detail is whole — every field, the notes included, and what is grafted beneath it', () => {
   const s = storeOf(BASE());
   const nd = nodeDetail(s, 'app:detail');
   assert.equal(nd.key, 'product/app/tools/one-tool/detail.yaml');
-  assert.deepEqual(nd.inScope, ['capa', 'capb']);
+  assert.deepEqual(nd.grafted, [], 'what an ancestor includes is not grafted beneath this node');
   assert.deepEqual(nd.ancestors.map((a) => a.name), ['App', 'Tools', 'One tool']);
   const root = nodeDetail(s, 'product/app/self.yaml');
+  assert.deepEqual(root.grafted, ['capa', 'capb'], 'its own includes, with what they include');
   assert.equal(root.dubious, 'the phone decision may no longer hold');
   assert.deepEqual(root.questions, ['does the free tier still bind?']);
   assert.deepEqual(root.context, 'the app root');
@@ -988,7 +1006,7 @@ test('the views\' assets are served from ui/ and from nowhere else', () => {
   const ok = resolveUiAsset('/ui/views.js');
   assert.ok(ok && ok.file.endsWith('/ui/views.js') && ok.type.includes('javascript'));
   assert.ok(resolveUiAsset('/ui/views.css').type.includes('css'));
-  assert.equal(resolveUiAsset('/ui/../../../magic/shared/index.css'), null, 'walking out');
+  assert.equal(resolveUiAsset('/ui/../../../app/shared/index.css'), null, 'walking out');
   assert.equal(resolveUiAsset('/ui/subdir/../../lib.mjs'), null, 'walking out sideways');
   assert.equal(resolveUiAsset('/ui/%2e%2e/%2e%2e/ui/views.css'), null, 'walking out and back in');
   assert.equal(resolveUiAsset('/ui/../server.mjs'), null);
@@ -1029,7 +1047,7 @@ test('the server answers every endpoint the explorer reads, against the live sto
     const nd = await get(`/api/node?key=${encodeURIComponent(someNode.key)}`);
     assert.equal(nd.key, someNode.key);
     assert.ok(nd.id && nd.decision && !('decisions' in nd));
-    assert.ok(Array.isArray(nd.ancestors) && Array.isArray(nd.children) && Array.isArray(nd.inScope));
+    assert.ok(Array.isArray(nd.ancestors) && Array.isArray(nd.children) && Array.isArray(nd.grafted));
     assert.equal((await fetch(`${base}/api/node?key=nope`)).status, 404);
 
     const hits = await get(`/api/search?q=${encodeURIComponent(someNode.name)}`);
@@ -1093,10 +1111,10 @@ test('the ERD draws each view with its typed fields, and the ref and consumes ed
 
 test('a path names its tree, and a tree names its short name', () => {
   assert.equal(treeOfPath('capabilities/email/declared-mail-only/self.yaml'), 'capabilities/email');
-  assert.equal(treeOfPath('product/hq/standalone-tools/self.yaml'), 'product/hq');
+  assert.equal(treeOfPath('product/shop/checkout/self.yaml'), 'product/shop');
   assert.equal(treeOfPath('engineering/explicit-utc-clock.yaml'), 'engineering');
   assert.equal(cloudOfTree('capabilities/email'), 'email');
-  assert.equal(cloudOfTree('product/hq'), 'hq');
+  assert.equal(cloudOfTree('product/shop'), 'shop');
   assert.equal(cloudOfTree('models'), 'models');
   assert.equal(SELF, 'self.yaml');
   assert.ok(existsSync(join(LEDGER, 'engineering')), 'the live store really is laid out this way');
@@ -1108,8 +1126,8 @@ test('a path names its tree, and a tree names its short name', () => {
 
 test('a citation reads as a comment or an annotation, one id or several', () => {
   assert.deepEqual(decisionRefIds('// @DecisionRef ui:edit-offers-clearing — the checkbox'), ['ui:edit-offers-clearing']);
-  assert.deepEqual(decisionRefIds('@DecisionRef("aud:colour-amber")'), ['aud:colour-amber']);
-  assert.deepEqual(decisionRefIds('@DecisionRef({"sub:form-stream", "admin:feed-merged"})'), ['sub:form-stream', 'admin:feed-merged']);
+  assert.deepEqual(decisionRefIds('@DecisionRef("cart:guest-checkout")'), ['cart:guest-checkout']);
+  assert.deepEqual(decisionRefIds('@DecisionRef({"cart:guest-checkout", "pay:one-processor"})'), ['cart:guest-checkout', 'pay:one-processor']);
   assert.deepEqual(decisionRefIds('mentions @DecisionRef without an id'), []);
 });
 

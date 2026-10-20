@@ -98,7 +98,7 @@
       ${d.dubious !== undefined && d.dubious !== null ? `<div class="flag"><b>Dubious</b> ${esc(d.dubious)}</div>` : ''}
       ${d.id ? decision(d) : ''}
       ${chips(d.includes, 'Includes')}
-      ${chips((d.inScope || []).filter((c) => !(d.includes || []).includes(c)), 'Capabilities in scope from above')}
+      ${chips((d.grafted || []).filter((c) => !(d.includes || []).includes(c)), 'Grafted beneath through its includes')}
       ${chips(d.fields, 'Fields')}
       ${(d.questions || []).length ? `<h3>Open questions</h3><ul>${list(d.questions)}</ul>` : ''}
       ${d.context !== undefined && d.context !== null ? `<h3>Context</h3><pre class="why">${esc(textOf(d.context))}</pre>` : ''}
@@ -370,7 +370,7 @@
 
   // ------------------------------------------------------------------ VIEWS
   // The catalog of typed views: each box a view's fields, each line a ref<view:…> a field carries or
-  // a view another consumes. Storage is not drawn — it lives in the migrations and Java models.
+  // a view another consumes. Storage is not drawn — it lives in the code, in its migrations and models.
   async function models() {
     const main = $('#v-main');
     if (!S.erd) {

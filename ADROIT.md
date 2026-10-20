@@ -121,8 +121,10 @@ differently from what sits above it states its own how right there, and being de
 more specific reading. There is no severing.
 
 **Build by depth.** A product can be built by following each hierarchy strictly by depth. A node
-is judged and implemented only against its own reading: its ancestors, engineering, and the
-capabilities grafted on that path — never its siblings or cousins. Siblings are considered
+is judged and implemented only against its own reading: its ancestors and engineering — never its
+siblings or cousins. A capability an ancestor includes is that ancestor's child, a sibling branch,
+and is in no other node's reading; a node inside a capability reads up through the graft, so its
+reading continues with each includer and that includer's ancestors. Siblings are considered
 together only as refinements of their common parent: a decision every child of a node states is
 lifted to that node, never when just some do, and a sibling whose refinement contradicts the
 parent is a finding against the parent. Two siblings resolving the same situation differently is
@@ -133,7 +135,8 @@ node's reading is deleted, and code citing it is re-pointed to the decision that
 `self.yaml`, whose decisions together state what an includer takes on. It exists so the same thing
 is built the same way everywhere its how repeats. `includes: [name]` grafts the capability's tree
 beneath the including node, read exactly as if its nodes were nested there, together with whatever
-its own nodes include, transitively. A capability is included on exactly the nodes that use it,
+its own nodes include, transitively. Like any child, it informs nothing beside it: it is no rule
+over the includer's other descendants. A capability is included on exactly the nodes that use it,
 never at a common ancestor merely because every child uses it somewhere; lifting an include
 follows the same every-child rule as lifting a decision. A node that does the capability's job
 differently states its own how on that same node, so the divergence lands on what differs.
@@ -157,8 +160,9 @@ Agents read the ledger **only through the dump**, never the raw files, so that m
 are never weighed as law.
 
 - **Read your scope** before work on a decision: the engineering tree whole, then each ancestor
-  node, the target node, and every capability grafted on that path, each as its whole tree. Add
-  the target's descendants when the work changes the target itself. Searching for the decisions a
+  node and the target node; for a target inside a capability, each includer of the graft with its
+  ancestors too. Add the target's descendants when the work changes the target itself; the
+  capabilities grafted beneath it are among them, each as its whole tree. Searching for the decisions a
   task seems to touch fails, because the decision that gets violated is the one the task did not
   seem to touch.
 - **The whole ledger** is read only for whole-ledger work, such as a vocabulary sweep or a
@@ -343,9 +347,9 @@ reading an absent log as empty. No agent reads events as decision input.
   framing stays neutral: report exactly as many as found. Stop when the findings turn
   predominantly editorial.
 - **Coherence probe — the compile check.** A contradiction exists only when one node's reading
-  disagrees with itself: the node, its ancestor path, engineering, and the capability trees grafted
-  on that path, a graft's interior nodes read against their own graft path, never against the
-  includer's other branches. It is checked per node; siblings and cousins are never compared.
+  disagrees with itself: the node, its ancestor path and engineering; a graft's interior nodes are
+  read against their own graft path up through the includer, never against the includer's other
+  branches. It is checked per node; siblings and cousins are never compared.
   Every proposed finding is validated mechanically: a pair of decisions that appear together in no
   node's reading is discarded, whatever the probe argued. Nor is the probe framed on what changed
   since: a decision is right or wrong against its reading now.
@@ -523,6 +527,6 @@ node $ADROIT_DIR/tools/server.mjs --open                    # the read-only expl
 The project is the nearest directory at or above the working directory that holds a `ledger/`;
 `ADROIT_PROJECT_DIR` names it outright, `ADROIT_LEDGER_DIR` points the tools at another ledger,
 and `ADROIT_HOME` moves the interactions log root. The citation check reads the project's tracked
-code files, in comment form (`@DecisionRef <id>`) or annotation form (`@DecisionRef("id")`). The check enforces this document's layout, node, view, id, include, reference and token
-rules; open questions and uncited view fields are reported, never failed. A file the check cannot
+code files, in comment form (`@DecisionRef <id>`) or annotation form (`@DecisionRef("id")`). The
+check enforces this document's layout, node, view, id, include, reference and token rules; open questions and uncited view fields are reported, never failed. A file the check cannot
 parse is reported as an error and the rest of the ledger is still validated.

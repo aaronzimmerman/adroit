@@ -15,15 +15,17 @@
 // ONE LINE PER NODE, and a node is ONE decision: `{node, id, name, decision, rejected?,
 // references?, includes?, tree, scope_role?}` — `node` is the file's ledger-relative path.
 //
-// THE SCOPED READ (user-directed 2026-10-10). Decisions scope DOWNWARD: a decision describes its
+// THE SCOPED READ (user-directed 2026-10-10). Each decision is a how of its parent: it describes its
 // own node and informs the branch beneath it (directory nesting is parentage; `self.yaml` is a
-// directory's own decision, a leaf file a child decision of its directory). So for work on a given decision read ENGINEERING IN FULL, then the
-// ANCESTOR nodes of the target (tree root down), the TARGET node, and every CAPABILITY the target or
-// an ancestor `includes` — each capability's whole tree, plus whatever its nodes include,
-// transitively. `--subtree` adds the target's DESCENDANTS, for work that changes the target
-// itself. A target is a decision id or a ledger-relative path (a node file or directory;
+// directory's own decision, a leaf file a child decision of its directory). So for work on a given
+// decision read ENGINEERING IN FULL, then the ANCESTOR nodes of the target (tree root down) and the
+// TARGET node. A capability is grafted beneath the node that includes it, as if its nodes were
+// nested there, so it is in no other node's scope; for a target INSIDE a capability, the path above
+// the graft is read too — each INCLUDER of that capability with its own ancestors. `--subtree` adds
+// the target's DESCENDANTS, the capabilities grafted beneath it among them, for work that changes
+// the target itself. A target is a decision id or a ledger-relative path (a node file or directory;
 // a leading `ledger/` is accepted); an unknown one exits 1. Every line carries `scope_role` —
-// engineering | ancestor | target | capability | descendant — and a node appears once.
+// engineering | includer | ancestor | target | descendant — and a node appears once.
 //
 // The full dump reads in tree order: engineering (principles first), then the capabilities, then
 // the products, then the views. stdout is pure JSONL; the tally goes to stderr so a pipe stays clean.

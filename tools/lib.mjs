@@ -26,7 +26,7 @@
 // the DTO contract that crosses boundaries, its field types a closed vocabulary the check validates
 // (see parseSchemaField), its field citations naming decision ids. The legacy `model:` records and
 // their `shape:` / `tables:` / `pending:` blocks are retired (user-directed 2026-10-13): storage is
-// memorialized by the migrations and Java models, never in the ledger. A capability is nothing but its subtree: its root node's decisions state what
+// memorialized by the code, in its migrations and models, never in the ledger. A capability is nothing but its subtree: its root node's decisions state what
 // an includer takes on, and its nodes' `includes` are its dependencies. The capability contract file
 // is retired (user-ruled 2026-10-12) — one anywhere in the store fails the check.
 //
@@ -114,7 +114,7 @@ export const RESERVED_KINDS = ['principle', 'story', 'view'];
 /** Kinds that once existed, each with what replaced it — an id in one is a hard error. */
 export const RETIRED_KINDS = {
   model: 'models were retired for views — a typed view: record is the data vocabulary, and storage ' +
-    'lives in the migrations and Java models',
+    'lives in the code, in its migrations and models',
 };
 /** A view record's keys, in the order a file writes them. */
 export const VIEW_KEYS = ['id', 'decision', 'schema', 'rejected', 'links', 'context'];
@@ -122,8 +122,8 @@ export const VIEW_KEYS = ['id', 'decision', 'schema', 'rejected', 'links', 'cont
 export const VIEW_LINK_KEYS = ['consumes', 'grounds'];
 /** Keys of the retired model format, each with what replaced it — a hard error on a view record. */
 export const RETIRED_VIEW_KEYS = {
-  shape: 'a view carries a typed schema: — the legacy shape: block went with the models; storage lives in the migrations and Java models',
-  tables: 'storage is memorialized by the migrations and Java models, never listed in the ledger',
+  shape: 'a view carries a typed schema: — the legacy shape: block went with the models; storage lives in the code, in its migrations and models',
+  tables: 'storage is memorialized by the code, in its migrations and models, never listed in the ledger',
   pending: 'a view states current truth only; a ruled-but-unbuilt shape lives in the decisions that reference the view',
 };
 export const DOMAINS_FILE = 'domains.yaml';
@@ -157,11 +157,11 @@ export const slugOf = (name) => String(name).toLowerCase()
   .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
 
 /** Words a sentence-cased name keeps upper-case. Cosmetic only: a slug is lower-case either way. */
-const ACRONYMS = new Map(['ai', 'api', 'cors', 'csrf', 'csv', 'cta', 'db', 'hq', 'http', 'id', 'ip',
+const ACRONYMS = new Map(['ai', 'api', 'cors', 'csrf', 'csv', 'cta', 'db', 'http', 'id', 'ip',
   'llm', 'mcp', 'og', 'qr', 'sql', 'ui', 'url', 'utc', 'json', 'html', 'ssi', 'sms', 'pdf', 'dto']
   .map((w) => [w, w.toUpperCase()]).concat([['apis', 'APIs'], ['ids', 'IDs'], ['urls', 'URLs']]));
 
-/** A draft name from a decision id: `story:standalone-tools` → "Standalone tools". */
+/** A draft name from a decision id: `story:checkout-steps` → "Checkout steps". */
 export function draftName(id) {
   const words = String(id).slice(String(id).indexOf(':') + 1).split('-').filter(Boolean)
     .map((w) => ACRONYMS.get(w) ?? w);
@@ -580,7 +580,7 @@ export function shapeIndex({ records = [], byId = new Map() } = {}) {
 
 /** THE TYPED SCHEMA (user-directed 2026-10-13: the ledger's typed data vocabulary is VIEWS ONLY —
  *  the DTOs that move through the system, never table schemas). Every record in models/ is a view
- *  carrying `schema:`; it holds `fields` only — no `tables` (storage lives in migrations + Java)
+ *  carrying `schema:`; it holds `fields` only — no `tables` (storage lives in the code)
  *  and no `pending` (a view states current truth; ruled-but-unbuilt shapes live in the decisions
  *  that reference it). A field reads
  *    field: <type> [(id, id)] [— meaning]
@@ -654,7 +654,7 @@ export function schemaFindings(rec, byId = new Map()) {
   for (const k of Object.keys(rec.schema)) {
     if (k !== 'fields') {
       out.push({ field: k, message: k === 'tables'
-        ? 'a typed schema lists no tables — storage is memorialized by the migrations and Java models'
+        ? 'a typed schema lists no tables — storage is memorialized by the code, in its migrations and models'
         : k === 'pending'
           ? 'a typed schema has no pending — a view states current truth only; a ruled-but-unbuilt shape lives in the decisions that reference the view'
           : `'${k}' is not a schema key — schema holds fields only` });
@@ -719,11 +719,12 @@ export const declaredDerivations = (rec) => {
 // ---------------------------------------------------------------------------
 
 /** NODES AND INCLUDES (user-ruled 2026-10-11; one decision per node 2026-10-14). A node's
- *  ancestors are the `self.yaml` of each enclosing directory. `includes: [x]` brings the whole `capabilities/x`
- *  tree into the scope of the node and every descendant — and whatever that tree's own nodes
- *  include, transitively. Helpers:
+ *  ancestors are the `self.yaml` of each enclosing directory. `includes: [x]` grafts the whole
+ *  `capabilities/x` tree beneath the including node, exactly as if its nodes were nested there —
+ *  with whatever that tree's own nodes include, transitively. It reaches nothing else beneath the
+ *  includer: a capability is the includer's child, never a rule over its other descendants. Helpers:
  *    ancestorsOf(node)          ancestor nodes, root first
- *    includedFor(node)          capability names the node or an ancestor includes
+ *    includersOf(name)          the nodes outside a capability that include it
  *    capabilityClosure(names)   those names plus everything their trees include, transitively
  *    nodesOfCapability(name)    the capability's nodes, in path order */
 export function nodeIndex(store) {
@@ -738,8 +739,7 @@ export function nodeIndex(store) {
     }
     return chain;
   };
-  const lineage = (n) => [...ancestorsOf(n), nodeOf(n)].filter(Boolean);
-  const includedFor = (n) => new Set(lineage(n).flatMap((x) => x.includes));
+  const includersOf = (name) => nodes.filter((x) => x.includes.includes(name) && x.tree !== `capabilities/${name}`);
   const nodesOfCapability = (name) => nodes.filter((x) => x.tree === `capabilities/${name}`);
   const capabilityClosure = (names) => {
     const out = new Set(), queue = [...names];
@@ -752,7 +752,7 @@ export function nodeIndex(store) {
     return out;
   };
 
-  return { nodeOf, ancestorsOf, includedFor, capabilityClosure, nodesOfCapability };
+  return { nodeOf, ancestorsOf, includersOf, capabilityClosure, nodesOfCapability };
 }
 
 // ---------------------------------------------------------------------------
@@ -1056,7 +1056,7 @@ export function validate(store) {
     for (const [type, t] of viewLinks(rec)) {
       if (type === 'consumes' && !(isView(t) && byId.get(t)?._tree === 'models')) {
         bad(at, 'dangling', `consumes '${t}', which is no view record — a view consumes other views; ` +
-          `storage lives in the migrations and Java models`);
+          `storage lives in the code, in its migrations and models`);
       } else if (type === 'grounds' && !byId.has(t) && !isPrinciple(t)) {
         bad(at, 'dangling', `grounds '${t}' names no record`);
       }
@@ -1134,7 +1134,7 @@ export function storeCounts(store) {
 // ---------------------------------------------------------------------------
 
 /** The scope roles, in reading order. */
-export const SCOPE_ROLES = ['engineering', 'ancestor', 'target', 'capability', 'descendant'];
+export const SCOPE_ROLES = ['engineering', 'includer', 'ancestor', 'target', 'descendant'];
 
 /** Resolve a target — a decision id, or a ledger-relative path to a node file or directory — to
  *  its node; null when nothing matches. */
@@ -1145,22 +1145,25 @@ export function resolveNode(store, t) {
   return store.nodeByRel.get(rel) ?? store.nodeByRel.get(`${rel}/${SELF}`) ?? null;
 }
 
-/** What an agent working on `targets` reads — decisions scope DOWNWARD, so the rest of the store
- *  does not bind the work. In reading order:
+/** What an agent working on `targets` reads — each node is a how of its parent, so the rest of
+ *  the store does not bind the work. In reading order:
  *    engineering — every engineering node;
+ *    includer — for a target inside a capability, the path above the graft: each node that
+ *      includes the capability, with its own ancestors, root first (and on up through any
+ *      capability that includer itself lives in);
  *    ancestor / target — each target's ancestor nodes, root first, then the target node; each
  *      ancestor (and a self.yaml target) WHOLE — with the direct leaf files of its directory;
- *    capability — every node of every capability the target or an ancestor includes, plus what
- *      those nodes include, transitively;
- *    descendant — with `subtree`, every node nested beneath a target.
- *  A node appears once, under its strongest role (target > ancestor > capability > descendant >
- *  engineering). An unresolvable target throws. */
+ *    descendant — with `subtree`, every node nested beneath a target, and every node of each
+ *      capability grafted beneath it (by the target or a descendant), transitively.
+ *  A capability included by an ancestor is that ancestor's child: it is not in the scope of the
+ *  ancestor's other descendants. A node appears once, under its strongest role (target > ancestor >
+ *  includer > descendant > engineering). An unresolvable target throws. */
 export function scopedRead(store, targets, { subtree = false } = {}) {
   const unknown = targets.filter((t) => !resolveNode(store, t));
   if (unknown.length) throw new Error(`no decision or ledger path matches: ${unknown.join(', ')}`);
   const nx = nodeIndex(store);
   const resolved = targets.map((t) => resolveNode(store, t));
-  const PRIORITY = ['target', 'ancestor', 'capability', 'descendant', 'engineering'];
+  const PRIORITY = ['target', 'ancestor', 'includer', 'descendant', 'engineering'];
   const role = new Map();
   const claim = (n, r) => {
     const cur = role.get(n.rel);
@@ -1178,36 +1181,55 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
   }
   const chainOf = (t) => [...nx.ancestorsOf(t), t].flatMap((n) => (path.posix.basename(n.rel) === SELF
     ? [n, ...(leavesBeside.get(path.posix.dirname(n.rel)) ?? []).filter((x) => x !== t)] : [n]));
+  const capabilityOf = (n) => (n.tree.startsWith('capabilities/') ? n.tree.slice('capabilities/'.length) : null);
+
+  // The path above a graft: the includers of the capability a node lives in, each with its own
+  // chain, and on up through the capability an includer lives in, until none is new.
+  const includerChains = (t) => {
+    const out = [], seen = new Set(), queue = [capabilityOf(t)].filter(Boolean);
+    while (queue.length) {
+      const cap = queue.shift();
+      if (seen.has(cap)) continue;
+      seen.add(cap);
+      for (const inc of nx.includersOf(cap)) {
+        for (const n of chainOf(inc)) if (!out.includes(n)) out.push(n);
+        const next = capabilityOf(inc);
+        if (next) queue.push(next);
+      }
+    }
+    return out;
+  };
 
   for (const n of store.nodes) if (n.tree === 'engineering') claim(n, 'engineering');
-  const capabilities = new Set();
+  const above = [];
   const descendants = [];
   for (const t of resolved) {
+    for (const n of includerChains(t)) { claim(n, 'includer'); if (!above.includes(n)) above.push(n); }
     // the leaves beside a self.yaml target are the target read whole, so they read as the target
     const beside = path.posix.basename(t.rel) === SELF ? (leavesBeside.get(path.posix.dirname(t.rel)) ?? []) : [];
     for (const a of chainOf(t)) if (a !== t) claim(a, beside.includes(a) ? 'target' : 'ancestor');
     claim(t, 'target');
-    for (const c of nx.capabilityClosure(nx.includedFor(t))) capabilities.add(c);
-    if (subtree && path.posix.basename(t.rel) === SELF) {
-      const dir = t.rel.slice(0, -SELF.length);
-      descendants.push(...store.nodes.filter((n) => n.rel.startsWith(dir) && n !== t));
+    if (subtree) {
+      const nested = path.posix.basename(t.rel) === SELF
+        ? store.nodes.filter((n) => n.rel.startsWith(t.rel.slice(0, -SELF.length)) && n !== t) : [];
+      const grafted = nx.capabilityClosure([t, ...nested].flatMap((n) => n.includes));
+      descendants.push(...nested, ...[...grafted].flatMap((c) => nx.nodesOfCapability(c)));
     }
   }
-  for (const c of capabilities) for (const n of nx.nodesOfCapability(c)) claim(n, 'capability');
   for (const n of descendants) claim(n, 'descendant');
 
-  // Reading order: engineering (principles first), then each target's chain root-first, then the
-  // capabilities, then the descendants — each group in path order.
+  // Reading order: engineering (principles first), then the path above any graft, then each
+  // target's chain root-first, then the descendants — each group in path order.
   const rank = (n) => (n.ids.some(isPrinciple) ? 0 : 1);
   const chainOrder = [];
   for (const t of resolved) for (const n of chainOf(t)) if (!chainOrder.includes(n)) chainOrder.push(n);
   const groups = {
     engineering: store.nodes.filter((n) => role.get(n.rel) === 'engineering').sort((a, b) => rank(a) - rank(b)),
+    includer: above.filter((n) => role.get(n.rel) === 'includer'),
     chain: chainOrder.filter((n) => ['ancestor', 'target'].includes(role.get(n.rel))),
-    capability: store.nodes.filter((n) => role.get(n.rel) === 'capability'),
     descendant: store.nodes.filter((n) => role.get(n.rel) === 'descendant'),
   };
-  const nodes = [...groups.engineering, ...groups.chain, ...groups.capability, ...groups.descendant];
+  const nodes = [...groups.engineering, ...groups.includer, ...groups.chain, ...groups.descendant];
   return { nodes, role, targets: resolved };
 }
 
@@ -1543,7 +1565,7 @@ export function nodeDetail(store, key) {
     decision: r?.decision, rejected: r?.rejected ?? [], references: effectiveReferences(r),
     interactions: ix.byDecision.get(n.id) ?? [],
     includes: n.includes, dubious: n.dubious, questions: n.questions, context: n.context,
-    inScope: [...nx.capabilityClosure(nx.includedFor(n))].sort(),
+    grafted: [...nx.capabilityClosure(n.includes)].sort(),
     ancestors: nx.ancestorsOf(n).map((a) => ({ key: a.rel, name: a.name })),
     children: store.nodes.filter((c) => c.parent === n.rel).map((c) => ({ key: c.rel, name: c.name })),
   };
@@ -1579,7 +1601,7 @@ export function capabilityIndex(store) {
 
 /** THE ERD — a catalog of the views: one entity per view with its typed fields, and the edges
  *  between views — each `ref<view:…>` a field carries (`ref`, labelled with the field) and each view
- *  a view `consumes`. Storage is not drawn: it lives in the migrations and Java models. */
+ *  a view `consumes`. Storage is not drawn: it lives in the code, in its migrations and models. */
 export function erdData(store) {
   const vx = viewIndex(store);
   const entities = vx.views.map((rec) => {

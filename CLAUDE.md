@@ -17,8 +17,8 @@ This repository holds three things:
   `--diff [ref]`, `--open`.
 - `node --test tools/ledger.test.mjs tools/migrate.test.mjs` — the tools' own tests.
 
-These are the only copy of the tools. Adopting projects (StageDoor in `~/workspace/magic-beans`)
-run them from here through `ADROIT_DIR`; a tool change is made here, never in a project.
+These are the only copy of the tools. An adopting project runs them from here through `ADROIT_DIR`
+(ADROIT.md, The tools); a tool change is made here, never in a project.
 
 ## The app
 
@@ -26,6 +26,6 @@ The ledger UI lives in `app/` (`app/shared`, `app/server`, `app/web`):
 
 - `npm run app` — build and serve on port 4181.
 - `npm run dev` — dev servers.
-- `npm test` — build, server and web tests, dead-export check.
+- `npm test` — build, tool, server and web tests, dead-export check.
 
 Code cites decisions with `@DecisionRef <id>` and marks unresolved questions `@DecisionGap`.

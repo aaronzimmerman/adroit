@@ -133,7 +133,7 @@ test('numbers and booleans keep their types, and strings that look like them kee
 });
 
 test('plainSafe is the parser\'s rules stated from the other side', () => {
-  for (const s of ['plain', 'hello world', 'a:b', 'e.g. she/her', 'spec/auditions.spec.md (backfill)']) {
+  for (const s of ['plain', 'hello world', 'a:b', 'e.g. she/her', 'spec/checkout.spec.md (backfill)']) {
     assert.equal(plainSafe(s), true, s);
   }
   for (const s of ['', ' x', 'x ', 'a: b', 'a:', 'a # b', '403', 'true', 'null', '- x', '#x', '[x', 'a\nb']) {
@@ -205,18 +205,18 @@ test('a comment INSIDE a block scalar is content, not a comment', () => {
 
 test('a block list of maps is written compactly and read back — the shape of the retired decisions: list', () => {
   const node = {
-    name: 'Standalone tools',
+    name: 'Checkout steps',
     decisions: [
-      { id: 'story:standalone-tools', decision: 'HQ presents the user standalone tools, each for running a single aspect of a production.' },
-      { id: 'perm:collaborator-full-access', decision: `${'A long decision that has to fold over several lines '.repeat(4)}end.`,
+      { id: 'story:checkout-steps', decision: 'Checkout walks the shopper through separate steps, each settling a single part of the order.' },
+      { id: 'acct:member-full-access', decision: `${'A long decision that has to fold over several lines '.repeat(4)}end.`,
         rejected: ['finer authorities', `${'a long rejected alternative '.repeat(6)}end`] },
     ],
     includes: ['cards'],
   };
   const text = trip(node);
   // the compact form: the dash carries the first key, the rest align under it
-  assert.match(text, /^decisions:\n {2}- id: story:standalone-tools\n {4}decision: >-\n {6}HQ presents/m);
-  assert.match(text, /^ {2}- id: perm:collaborator-full-access\n {4}decision: >-$/m);
+  assert.match(text, /^decisions:\n {2}- id: story:checkout-steps\n {4}decision: >-\n {6}Checkout walks/m);
+  assert.match(text, /^ {2}- id: acct:member-full-access\n {4}decision: >-$/m);
   assert.match(text, /^ {4}rejected:\n {6}- finer authorities\n {6}- >-$/m);
   assert.match(text, /^includes: \[cards\]$/m, 'a short id list stays a flow list');
   // hand-written variants of the same structure parse too
@@ -263,20 +263,20 @@ test('every node file in the live ledger re-emits byte-for-byte from what it par
 
 test('a node file with references and a typed schema block round-trip byte-for-byte', () => {
   const nodeFile = {
-    id: 'cast:role-set-is-shared-pool', name: 'Role set is shared pool', decision: 'A role set is configuration.',
-    rejected: ['bare names'], references: ['view:role', 'view:cast-assignment'], includes: ['cards'],
+    id: 'cart:line-set-is-shared', name: 'Line set is shared', decision: 'A line set is configuration.',
+    rejected: ['bare names'], references: ['view:line', 'view:order-line'], includes: ['cards'],
     questions: ['one open tension'], context: 'a note',
   };
   const view = {
-    id: 'view:role', decision: 'One role as every tool passes it.',
+    id: 'view:line', decision: 'One line as every step passes it.',
     schema: {
       fields: {
-        name: 'string (cast:role-is-its-name) — the role\'s name',
-        status: 'enum<NOT_CONTACTED|PENDING|ACCEPTED> (cast:offer-follows-assignment) — a long meaning that goes on and on until the emitter has to fold the line past its width',
-        roleId: 'ref<view:role> — a pointer', total: 'derived<ref<view:casting>>',
+        name: 'string (cart:line-is-its-name) — the line\'s name',
+        status: 'enum<NOT_CONTACTED|PENDING|ACCEPTED> (cart:offer-follows-line) — a long meaning that goes on and on until the emitter has to fold the line past its width',
+        lineId: 'ref<view:line> — a pointer', total: 'derived<ref<view:basket>>',
       },
     },
-    links: { consumes: ['view:cast-assignment'] },
+    links: { consumes: ['view:order-line'] },
   };
   for (const value of [nodeFile, view]) {
     const text = trip(value);
@@ -289,33 +289,33 @@ test('a node file with references and a typed schema block round-trip byte-for-b
 // ---------------------------------------------------------------------------
 
 const LEGACY = {
-  id: 'story:hq',
-  decision: 'A user manages their theatre.',
-  rejected: ['a show-centric root'],
+  id: 'story:shop',
+  decision: 'A person runs their shop.',
+  rejected: ['a product-centric root'],
   peers: {
-    'mod:hq-works-on-phone': { decision: 'Every HQ surface works on a phone.', severable: true },
-    'cal:event-adjusted-by-its-tool': { decision: 'Only the tool that made an event adjusts it.', rejected: [],
-      context: { why: 'lifted from the tool capability' }, links: { grounds: ['principle:single-resolver'] } },
+    'mob:shop-works-on-phone': { decision: 'Every shop surface works on a phone.', severable: true },
+    'ord:order-adjusted-by-its-step': { decision: 'Only the step that made an order line adjusts it.', rejected: [],
+      context: { why: 'lifted from the step capability' }, links: { grounds: ['principle:single-resolver'] } },
   },
   mounts: ['cards'],
-  severs: ['bill:hq-in-free-tier'],
-  links: { domain: 'mod', consumes: ['auth:one-trust-contract'] },
+  severs: ['bill:shop-in-free-tier'],
+  links: { domain: 'mob', consumes: ['auth:one-trust-contract'] },
   context: { why: 'root story', src: 'inbox 008' },
 };
 
 test('legacyNode: the host and its peers become the decisions, host first, peers in file order', () => {
   const n = legacyNode(LEGACY);
-  assert.equal(n.name, 'HQ');
+  assert.equal(n.name, 'Shop');
   assert.deepEqual(n.decisions, [
-    { id: 'story:hq', decision: 'A user manages their theatre.', rejected: ['a show-centric root'] },
-    { id: 'mod:hq-works-on-phone', decision: 'Every HQ surface works on a phone.' },
-    { id: 'cal:event-adjusted-by-its-tool', decision: 'Only the tool that made an event adjusts it.' },
+    { id: 'story:shop', decision: 'A person runs their shop.', rejected: ['a product-centric root'] },
+    { id: 'mob:shop-works-on-phone', decision: 'Every shop surface works on a phone.' },
+    { id: 'ord:order-adjusted-by-its-step', decision: 'Only the step that made an order line adjusts it.' },
   ], 'an empty rejected list is dropped; severable and links carry nothing forward');
   assert.deepEqual(n.includes, ['cards'], 'mounts → includes');
   assert.ok(!('severed' in n), 'severs carry nothing forward — severs are retired');
   assert.deepEqual(n.context, {
-    'story:hq': { why: 'root story', src: 'inbox 008' },
-    'cal:event-adjusted-by-its-tool': { why: 'lifted from the tool capability' },
+    'story:shop': { why: 'root story', src: 'inbox 008' },
+    'ord:order-adjusted-by-its-step': { why: 'lifted from the step capability' },
   }, 'several contexts become a mapping keyed by decision id — no text lost');
   assert.deepEqual(Object.keys(n), ['name', 'decisions', 'includes', 'context'], 'the node key order');
 });
@@ -328,12 +328,12 @@ test('mergeContexts: none is absent, one keeps its shape, several are keyed by d
 });
 
 test('a name is drafted from an id, and a file name is the name\'s slug', () => {
-  assert.equal(draftName('story:standalone-tools'), 'Standalone tools');
-  assert.equal(draftName('perm:card-access-sole-authority'), 'Card access sole authority');
+  assert.equal(draftName('story:checkout-steps'), 'Checkout steps');
+  assert.equal(draftName('acct:card-access-sole-authority'), 'Card access sole authority');
   assert.equal(draftName('eng:explicit-utc-clock'), 'Explicit UTC clock', 'known acronyms keep their case');
-  assert.equal(slugOf('Standalone tools'), 'standalone-tools');
+  assert.equal(slugOf('Checkout steps'), 'checkout-steps');
   assert.equal(slugOf('Explicit UTC clock'), 'explicit-utc-clock');
-  assert.equal(slugOf("Who's  in — the cast, (v2)!"), 'whos-in-the-cast-v2', 'punctuation dropped, spaces collapse');
+  assert.equal(slugOf("Who's  in — the team, (v2)!"), 'whos-in-the-team-v2', 'punctuation dropped, spaces collapse');
 });
 
 test('the loader reads a host-record file as a node, and the check refuses it in the working tree', () => {

@@ -15,7 +15,8 @@
     "test:server": "vitest run --root app/server",
     "test:web": "vitest run --root app/web",
     "check:dead": "node app/scripts/dead-exports.mjs",
-    "test": "npm run build && npm run test:server && npm run test:web && npm run check:dead"
+    "test:tools": "node --test tools/ledger.test.mjs tools/migrate.test.mjs",
+    "test": "npm run build && npm run test:tools && npm run test:server && npm run test:web && npm run check:dead"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
