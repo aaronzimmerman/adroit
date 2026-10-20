@@ -115,14 +115,14 @@ describe('the view', () => {
     expect(v.ids['view:part']).toBe('models/part.yaml');
   });
 
-  // @DecisionRef ui:trace-dependence — every ancestor and every capability in scope.
-  it('gives each node its one decision, its ancestors and the capabilities in scope', async () => {
+  // @DecisionRef ui:trace-dependence — the path down to the node.
+  it('gives each node its one decision and the path down to it', async () => {
     repo = makeFixtureRepo();
     const v = await view(ledgerOf(repo));
     const leaf = v.places['product/demo/parent-rule/online-only/deep-leaf.yaml'].node!;
     expect(leaf.doc).toEqual({ id: 'app:deep-leaf', name: 'Deep leaf', decision: 'Deep leaves live here.' });
     expect(leaf.ancestors).toEqual(['product/demo', 'product/demo/parent-rule', 'product/demo/parent-rule/online-only']);
-    expect(leaf.capabilities).toEqual([{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }]);
+    expect(leaf).not.toHaveProperty('capabilities');
     const parent = v.places['product/demo/parent-rule'].node!;
     expect(parent.doc.rejected).toEqual(['letting children rule — too chaotic']);
     expect(parent.contextText).toBe('because parents know');

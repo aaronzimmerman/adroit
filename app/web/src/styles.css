@@ -78,7 +78,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 .decision-text { margin: 4px 0; font-size: 15px; }
 .rejected, .questions { margin: 4px 0; padding-left: 18px; }
 .decision-list { margin: 4px 0; padding-left: 18px; }
-.ancestor-group, .capability-group { margin: 8px 0; padding-left: 8px; border-left: 2px solid var(--line); }
+.capability-group { margin: 8px 0; padding-left: 8px; border-left: 2px solid var(--line); }
 .group-name { font-weight: 600; }
 .context, .raw { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; white-space: pre-wrap; }
 

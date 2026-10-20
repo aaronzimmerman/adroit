@@ -1,9 +1,13 @@
 id: ui:trace-dependence
 name: Trace dependence
 decision: >-
-  At any node the user sees the node's reading: its own decision, every ancestor's, and each
-  capability grafted on that path.
+  At any node the user sees where it sits: the path down to it, each step selectable, and the
+  parent's decision as the how this node refines.
 rejected:
   - >-
-    showing only the node's own decision and leaving the user to climb for the rest — a reader
-    missing an ancestor's decision misreads the node
+    every ancestor's decision, and every capability included above, listed as binding the node — a
+    decision answers how its parent works and informs only its own branch; nothing above governs
+    downward
+  - >-
+    showing only the node's own decision — a node reads as a refinement of its parent, so the
+    parent's decision is needed to read it

@@ -1,9 +1,9 @@
-// What binds a node and what a change to it reaches, measured from the tree (the directory
-// nesting and the includes) — one place, read by the snapshot and by the write path.
+// What a change to a node reaches, measured from the tree (the directory nesting and the
+// includes) — one place, read by the snapshot and by the write path.
 // @DecisionRef principle:single-resolver — the snapshot's dependents count and the commit's
 // suspect set are the same function.
 import * as path from 'node:path';
-import { nodeIndex, SELF, type LibNode, type LibStore } from './adroit.js';
+import { SELF, type LibNode, type LibStore } from './adroit.js';
 
 export const capabilityOf = (tree: string): string | null =>
   tree.startsWith('capabilities/') ? tree.slice('capabilities/'.length) : null;
@@ -42,25 +42,6 @@ export function editReach(store: LibStore, rel: string): Map<string, Reach> {
       }
       const next = capabilityOf(inc.tree);
       if (next) queue.push(next);
-    }
-  }
-  return out;
-}
-
-/** The capabilities in a node's scope, each with the node that brings it in: the chain's
- * includes first, root first, then what those capabilities' own nodes include. */
-export function capabilitiesInScope(store: LibStore, rel: string): { name: string; via: string }[] {
-  const nx = nodeIndex(store);
-  const node = store.nodeByRel.get(rel);
-  if (!node) return [];
-  const queue = [...nx.ancestorsOf(node), node].flatMap((c) => c.includes.map((name) => ({ name, via: c.rel })));
-  const out: { name: string; via: string }[] = [];
-  while (queue.length > 0) {
-    const next = queue.shift()!;
-    if (out.some((o) => o.name === next.name)) continue;
-    out.push(next);
-    for (const x of nx.nodesOfCapability(next.name)) {
-      for (const name of x.includes) queue.push({ name, via: x.rel });
     }
   }
   return out;

@@ -23,7 +23,7 @@ import {
 } from './adroit.js';
 import type { GitFacts } from './gitfacts.js';
 import { placeOfFile, type Opened } from './ledger.js';
-import { capabilitiesInScope, capabilityOf, editReach } from './scope.js';
+import { capabilityOf, editReach } from './scope.js';
 
 const isMap = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -143,15 +143,6 @@ export async function buildView(opened: Opened, git: GitFacts | null): Promise<L
       doc,
       views: effectiveReferences(rec),
       ancestors: nx.ancestorsOf(n).map((a) => placeOfFile(a.rel)),
-      capabilities: capabilitiesInScope(store, n.rel).map(({ name, via }) => {
-        const root = `capabilities/${name}/${SELF}`;
-        return {
-          name,
-          root: store.nodeByRel.has(root) ? placeOfFile(root) : null,
-          via: placeOfFile(via),
-          decisionCount: nx.nodesOfCapability(name).reduce((s, x) => s + x.ids.length, 0),
-        };
-      }),
       dependents: reachCount(n.rel),
       contextText: doc.context === undefined ? '' : typeof doc.context === 'string' ? doc.context : emitYaml(doc.context),
       ...(cap ? { capability: cap } : {}),

@@ -101,27 +101,29 @@ describe('the details panel', () => {
     expect(screen.getByText('Does the demo need accounts?')).toBeTruthy();
   });
 
-  // @DecisionRef ui:ancestors-grouped-by-ancestor — each ancestor's decision under its name.
-  // @DecisionRef ui:trace-dependence — every ancestor's decision, read at the node.
-  it('groups the binding decisions by ancestor', () => {
+  // @DecisionRef ui:trace-dependence — the path down, each step selectable, and the parent's how.
+  it('shows where a node sits: its path and its parent\'s decision, nothing listed as binding it', () => {
     wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
-    const above = screen.getByRole('region', { name: 'binding from above' });
-    const groups = above.querySelectorAll('.ancestor-group');
-    expect(groups).toHaveLength(2);
-    expect(within(groups[0] as HTMLElement).getByRole('button', { name: 'Demo' })).toBeTruthy();
-    expect(within(groups[0] as HTMLElement).getByText(/A user can demo things/)).toBeTruthy();
-    expect(within(groups[1] as HTMLElement).getByRole('button', { name: 'Parent rule' })).toBeTruthy();
-    expect(within(groups[1] as HTMLElement).getByText(/Parents rule broadly/)).toBeTruthy();
+    const at = screen.getByRole('region', { name: 'where it sits' });
+    const path = within(at).getByRole('navigation', { name: 'path' });
+    expect(within(path).getAllByRole('button').map((b) => b.textContent)).toEqual(['Demo', 'Parent rule']);
+    expect(within(at).getByText(/Parents rule broadly/)).toBeTruthy();
+    expect(within(at).queryByText(/A user can demo things/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'grafted beneath' })).toBeNull();
+    fireEvent.click(within(path).getByRole('button', { name: 'Demo' }));
+    expect(travel).toHaveBeenCalledWith('product/demo');
   });
 
-  // @DecisionRef ui:capabilities-shown-summarized — summarized by the root's decisions.
+  // @DecisionRef ui:capabilities-shown-summarized — beneath its includer only, by the root's decision.
   // @DecisionRef ui:open-a-capability — and opened in the navigation panel from there.
-  it('summarizes each capability in scope by its root\'s decisions, with a way to open it', () => {
+  it('shows a capability grafted beneath its includer only, summarized by its root\'s decision', () => {
     wrap(<DetailsPanel current="product/demo/parent-rule" />);
-    const caps = screen.getByRole('region', { name: 'capabilities in scope' });
-    expect(within(caps).getByText(/The user is told when something happens/)).toBeTruthy();
-    expect(within(caps).getByText(/1 more decision in its tree/)).toBeTruthy();
-    fireEvent.click(within(caps).getByRole('button', { name: 'open capability notify' }));
+    expect(screen.queryByRole('region', { name: 'grafted beneath' })).toBeNull();
+    cleanup();
+    wrap(<DetailsPanel current="product/demo" />);
+    const grafted = screen.getByRole('region', { name: 'grafted beneath' });
+    expect(within(grafted).getByText(/The user is told when something happens/)).toBeTruthy();
+    fireEvent.click(within(grafted).getByRole('button', { name: 'open capability notify' }));
     expect(travel).toHaveBeenCalledWith('capabilities/notify');
   });
 

@@ -43,16 +43,6 @@ export interface Place {
   uncommitted: boolean;
 }
 
-export interface CapabilityInScope {
-  name: string;
-  /** The capability root's place, when it has one. */
-  root: string | null;
-  /** The place of the chain node (or capability) that brings it into scope. */
-  via: string;
-  /** How many decisions the capability's whole tree holds. */
-  decisionCount: number;
-}
-
 export interface NodeView {
   /** The node file, ledger-relative. */
   rel: string;
@@ -64,8 +54,6 @@ export interface NodeView {
   views: string[];
   /** Ancestor places, root first. */
   ancestors: string[];
-  /** Every capability in scope: included on the chain, and what those include. */
-  capabilities: CapabilityInScope[];
   /** When this node lives in a capability: the capability's name. */
   capability?: string;
   /** When this node is a capability's root: the places of every node including it. */

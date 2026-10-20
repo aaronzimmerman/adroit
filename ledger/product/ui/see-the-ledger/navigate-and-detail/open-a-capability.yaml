@@ -1,5 +1,5 @@
 id: ui:open-a-capability
 name: Open a capability
 decision: >-
-  From a capability's summary the user can open the capability in the navigation panel to walk its
+  From a grafted capability the user can open the capability in the navigation panel to walk its
   full subtree.

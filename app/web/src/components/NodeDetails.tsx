@@ -4,15 +4,15 @@ import { labelOf, useLedger } from '../context.js';
 import { ChangeFlow } from './ChangeFlow.jsx';
 import { EditInPlace, linesEditor, textEditor } from './EditInPlace.jsx';
 import { Lens } from './Lens.jsx';
-import { BindingFromAbove } from './Scope.jsx';
+import { Grafted, IncludedBy, PlaceInTree } from './Scope.jsx';
 import { Structure } from './Structure.jsx';
 
 const trimmed = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean);
 
 /**
  * The current node, read and edited in place: its one decision with its rejected alternatives
- * and the views it references, its dubious mark and questions, its includes and context, its
- * structure, and everything binding it from above.
+ * and the views it references, its dubious mark and questions, its includes and context, where it
+ * sits, what is nested and grafted beneath it, and its structure.
  * @DecisionRef ui:details-panel-right — the right panel shows the current node: its decision with
  * its rejected alternatives, its dubious mark and its questions.
  * @DecisionRef ui:all-but-id-editable — every field edits here; the id is shown, fixed.
@@ -29,6 +29,7 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
   const explicit = new Set(doc.references ?? []);
   return (
     <article className="node-details">
+      <PlaceInTree node={node} />
       <header>
         <EditInPlace
           label="name"
@@ -169,8 +170,9 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
         />
       </section>
 
-      <BindingFromAbove node={node} />
       <Children place={place} />
+      <Grafted node={node} />
+      <IncludedBy node={node} />
       <Structure place={place} />
     </article>
   );

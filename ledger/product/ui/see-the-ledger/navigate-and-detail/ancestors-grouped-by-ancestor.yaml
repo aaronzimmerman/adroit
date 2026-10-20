@@ -1,5 +1,0 @@
-id: ui:ancestors-grouped-by-ancestor
-name: Ancestors grouped by ancestor
-decision: >-
-  The details panel shows the decisions still binding from above, grouped by the ancestor that holds
-  them.

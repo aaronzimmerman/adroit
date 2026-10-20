@@ -21,7 +21,6 @@ const node = (
     doc,
     views: doc.references ?? [],
     ancestors: [],
-    capabilities: [],
     dependents: 0,
     contextText: '',
     ...extra,
@@ -47,7 +46,7 @@ export function makeView(): LedgerView {
         includes: ['notify'],
         questions: ['Does the demo need accounts?'],
       },
-      { capabilities: [{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }], dependents: 3 },
+      { dependents: 3 },
       ['product/demo/parent-rule'],
     ),
     'product/demo/parent-rule': node(
@@ -63,7 +62,6 @@ export function makeView(): LedgerView {
       },
       {
         ancestors: ['product/demo'],
-        capabilities: [{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }],
         views: ['view:widget', 'view:part'],
         dependents: 2,
         contextText: 'because parents know',
@@ -81,7 +79,6 @@ export function makeView(): LedgerView {
       },
       {
         ancestors: ['product/demo', 'product/demo/parent-rule'],
-        capabilities: [{ name: 'notify', root: 'capabilities/notify', via: 'product/demo', decisionCount: 2 }],
         dependents: 1,
       },
       ['product/demo/parent-rule/online-only/deep-leaf.yaml'],

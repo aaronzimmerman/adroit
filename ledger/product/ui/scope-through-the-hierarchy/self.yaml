@@ -3,8 +3,8 @@ name: Scope through the hierarchy
 decision: The UI is organized around the hierarchy and its includes.
 rejected:
   - >-
-    following links between decisions across the tree — a node's full context is its ancestry and
-    its includes, never a sideways reference
+    following links between decisions across the tree — a node is read in place, as a how of its
+    parent with the capabilities grafted beneath it, never through a sideways reference
 context: >-
   "the ui should focus on the hierarchy - we want to see all the binding decisions in scope at any
   point and be able to go up a level and descend a different tree instead"; showing includers from a
