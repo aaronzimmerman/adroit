@@ -160,11 +160,11 @@ Agents read the ledger **only through the dump**, never the raw files, so that m
 are never weighed as law.
 
 - **Read your scope** before work on a decision: the engineering tree whole, then each ancestor
-  node and the target node; for a target inside a capability, each includer of the graft with its
-  ancestors too. Add the target's descendants when the work changes the target itself; the
-  capabilities grafted beneath it are among them, each as its whole tree. Searching for the decisions a
-  task seems to touch fails, because the decision that gets violated is the one the task did not
-  seem to touch.
+  node and the target node — an ancestor's own decision, never its other children; for a target
+  inside a capability, each includer of the graft with its ancestors too. Add the target's
+  descendants when the work changes the target itself; the capabilities grafted beneath it are
+  among them, each as its whole tree. Searching for the decisions a task seems to touch fails,
+  because the decision that gets violated is the one the task did not seem to touch.
 - **The whole ledger** is read only for whole-ledger work, such as a vocabulary sweep or a
   coherence probe.
 - **The dump leaves out** `context`, `dubious` and `questions` unless maintenance work asks for

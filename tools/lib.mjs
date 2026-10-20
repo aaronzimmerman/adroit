@@ -1151,8 +1151,9 @@ export function resolveNode(store, t) {
  *    includer — for a target inside a capability, the path above the graft: each node that
  *      includes the capability, with its own ancestors, root first (and on up through any
  *      capability that includer itself lives in);
- *    ancestor / target — each target's ancestor nodes, root first, then the target node; each
- *      ancestor (and a self.yaml target) WHOLE — with the direct leaf files of its directory;
+ *    ancestor / target — each target's ancestor nodes, root first, then the target node: each
+ *      ancestor is its own decision only — its other children are siblings of the branch, never
+ *      in its reading;
  *    descendant — with `subtree`, every node nested beneath a target, and every node of each
  *      capability grafted beneath it (by the target or a descendant), transitively.
  *  A capability included by an ancestor is that ancestor's child: it is not in the scope of the
@@ -1170,17 +1171,7 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
     if (!cur || PRIORITY.indexOf(r) < PRIORITY.indexOf(cur)) role.set(n.rel, r);
   };
 
-  // An ancestor is read WHOLE: its directory's own decision (`self.yaml`) and the direct leaf
-  // files beside it — the decisions that were peers on one node before one-decision-per-file. The
-  // same holds for a target that is a directory's self.yaml. Nested directories are not pulled in.
-  const leavesBeside = new Map();
-  for (const n of store.nodes) {
-    if (path.posix.basename(n.rel) === SELF) continue;
-    const dir = path.posix.dirname(n.rel);
-    leavesBeside.set(dir, [...(leavesBeside.get(dir) ?? []), n]);
-  }
-  const chainOf = (t) => [...nx.ancestorsOf(t), t].flatMap((n) => (path.posix.basename(n.rel) === SELF
-    ? [n, ...(leavesBeside.get(path.posix.dirname(n.rel)) ?? []).filter((x) => x !== t)] : [n]));
+  const chainOf = (t) => [...nx.ancestorsOf(t), t];
   const capabilityOf = (n) => (n.tree.startsWith('capabilities/') ? n.tree.slice('capabilities/'.length) : null);
 
   // The path above a graft: the includers of the capability a node lives in, each with its own
@@ -1205,9 +1196,7 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
   const descendants = [];
   for (const t of resolved) {
     for (const n of includerChains(t)) { claim(n, 'includer'); if (!above.includes(n)) above.push(n); }
-    // the leaves beside a self.yaml target are the target read whole, so they read as the target
-    const beside = path.posix.basename(t.rel) === SELF ? (leavesBeside.get(path.posix.dirname(t.rel)) ?? []) : [];
-    for (const a of chainOf(t)) if (a !== t) claim(a, beside.includes(a) ? 'target' : 'ancestor');
+    for (const a of nx.ancestorsOf(t)) claim(a, 'ancestor');
     claim(t, 'target');
     if (subtree) {
       const nested = path.posix.basename(t.rel) === SELF

@@ -269,19 +269,16 @@ test('the scoped read: engineering, the ancestors and the target — a capabilit
     'engineering/a-principle.yaml': 'engineering',
     'engineering/a-rule.yaml': 'engineering',
     'product/app/self.yaml': 'ancestor',
-    // an ancestor is read WHOLE: the leaf files beside its self.yaml (its former peers) come with it
-    'product/app/on-phone.yaml': 'ancestor',
-    'product/app/sibling.yaml': 'ancestor',
+    // an ancestor is its own decision only: on-phone and sibling are the app's other children
     'product/app/tools/self.yaml': 'ancestor',
     'product/app/tools/one-tool/self.yaml': 'ancestor',
     'product/app/tools/one-tool/detail.yaml': 'target',
     // capa is included by the app root: grafted beneath the app, it is a sibling of tools, not above detail
   });
-  assert.deepEqual(r.nodes.map((n) => n.rel).slice(0, 8), [
+  assert.deepEqual(r.nodes.map((n) => n.rel), [
     'engineering/a-principle.yaml', 'engineering/a-rule.yaml', 'product/app/self.yaml',
-    'product/app/on-phone.yaml', 'product/app/sibling.yaml',
     'product/app/tools/self.yaml', 'product/app/tools/one-tool/self.yaml', 'product/app/tools/one-tool/detail.yaml',
-  ], 'reading order: engineering (principles first), then the chain root-first, each ancestor\'s leaves after its self.yaml');
+  ], 'reading order: engineering (principles first), then the chain root-first');
   // nor does a leaf beside the includer read it
   assert.ok(!scopedRead(s, ['product/app/sibling.yaml']).role.has('capabilities/capa/self.yaml'));
 });
@@ -296,34 +293,28 @@ test('the scoped read: a node inside a capability reads the path above the graft
     'capabilities/capa/self.yaml': 'includer',
     'capabilities/capa/leaf-a.yaml': 'includer',
     'product/app/self.yaml': 'includer',
-    'product/app/on-phone.yaml': 'includer',
-    'product/app/sibling.yaml': 'includer',
   });
   assert.deepEqual(r.nodes.filter((n) => r.role.get(n.rel) !== 'engineering').map((n) => n.rel).at(-1),
     'capabilities/capb/self.yaml', 'the path above the graft reads before the target');
   assert.ok(!scopedRead(s, ['capc:only-c']).role.has('product/app/self.yaml'), 'a capability nobody includes has nothing above it');
 });
 
-test('the scoped read restores a split-out former peer of an ancestor — and pulls in no nested directory', () => {
-  // product/app/self.yaml once held story:app AND app:on-phone as peers; split, app:on-phone is a
-  // leaf beside it. Reading anything beneath the app reads the app root whole, so app:on-phone comes too.
+test('the scoped read never reads a sibling — of the target or of any ancestor', () => {
   onDisk(BASE(), (dir) => {
     const out = lines(dump(dir, '--scope', 'app:detail')).filter((l) => l.node);
-    const peer = out.find((l) => l.id === 'app:on-phone');
-    assert.ok(peer, 'the former peer of an ancestor is in scope');
-    assert.equal(peer.scope_role, 'ancestor');
+    assert.ok(!out.some((l) => l.id === 'app:on-phone' || l.id === 'app:sibling'), 'an ancestor\'s other children stay out');
   });
   const s = storeOf(BASE());
   const leaf = scopedRead(s, ['app:on-phone']);
-  assert.equal(leaf.role.get('product/app/sibling.yaml'), 'ancestor', 'a target leaf reads its parent whole');
-  assert.ok(!leaf.role.has('product/app/tools/self.yaml') && !leaf.role.has('product/app/tools/one-tool/detail.yaml'),
-    'only the direct leaf files — never a nested directory');
+  assert.deepEqual([...leaf.role].filter(([, x]) => x !== 'engineering'),
+    [['product/app/self.yaml', 'ancestor'], ['product/app/on-phone.yaml', 'target']], 'a leaf reads its parent, never the leaves beside it');
 });
 
 test('the scoped read: --subtree adds the descendants; a target is an id, a node file or a directory; unknown throws', () => {
   const s = storeOf(BASE());
   const r = scopedRead(s, ['app:one-tool'], { subtree: true });
-  assert.equal(r.role.get('product/app/tools/one-tool/detail.yaml'), 'target', 'a leaf beside a self.yaml target is the target read whole');
+  assert.equal(r.role.get('product/app/tools/one-tool/detail.yaml'), 'descendant', 'a directory target\'s leaf children are its descendants');
+  assert.ok(!scopedRead(s, ['app:one-tool']).role.has('product/app/tools/one-tool/detail.yaml'), 'without --subtree, they stay out');
   assert.equal(resolveNode(s, 'ledger/product/app/tools/one-tool/').rel, 'product/app/tools/one-tool/self.yaml');
   assert.equal(resolveNode(s, 'product/app/sibling.yaml').rel, 'product/app/sibling.yaml');
   assert.equal(resolveNode(s, 'app:on-phone').rel, 'product/app/on-phone.yaml', 'a decision id finds its node');
@@ -348,7 +339,7 @@ test('dump --scope writes ONE line per node — one decision — with roles, and
     assert.deepEqual(out[0], { domains: { eng: 'Engineering.', app: 'The app.' } });
     assert.ok(out.every((l) => l.domains || l.node), 'only the domains and the nodes — no other line kind');
     const nodes = out.filter((l) => l.node);
-    assert.equal(nodes.length, 8, 'one line per node in scope');
+    assert.equal(nodes.length, 6, 'one line per node in scope');
     const root = nodes.find((l) => l.node === 'product/app/self.yaml');
     assert.deepEqual(root, {
       node: 'product/app/self.yaml', id: 'story:app', name: 'App',
@@ -360,7 +351,7 @@ test('dump --scope writes ONE line per node — one decision — with roles, and
     assert.deepEqual(nodes.map((l) => l.scope_role).filter((x, i, a) => a.indexOf(x) === i),
       ['engineering', 'ancestor', 'target']);
     assert.ok(nodes.every((l) => !('dubious' in l) && !('questions' in l) && !('context' in l)));
-    assert.match(r.stderr, /^8 of 12 decisions in scope \(2 engineering, 5 ancestor, 1 target\)\n$/);
+    assert.match(r.stderr, /^6 of 12 decisions in scope \(2 engineering, 3 ancestor, 1 target\)\n$/);
   });
 });
 
