@@ -116,3 +116,6 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 .lens { margin-top: 8px; }
 .citation pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto; }
 .diff { white-space: pre; }
+
+.field-token { font-family: ui-monospace, monospace; }
+.fields tr.picked { background: var(--panel-2); outline: 1px solid var(--accent); }

@@ -5,6 +5,7 @@ import { ChangeFlow } from './ChangeFlow.jsx';
 import { EditInPlace, linesEditor, textEditor } from './EditInPlace.jsx';
 import { Lens } from './Lens.jsx';
 import { Grafted, IncludedBy, PlaceInTree } from './Scope.jsx';
+import { TokenText } from './TokenText.jsx';
 import { Structure } from './Structure.jsx';
 
 const trimmed = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean);
@@ -60,7 +61,11 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
         <EditInPlace
           label="decision"
           value={doc.decision}
-          render={(v) => <p className="decision-text">{v}</p>}
+          render={(v) => (
+            <p className="decision-text">
+              <TokenText text={v} />
+            </p>
+          )}
           editor={textEditor('decision', 4)}
           toOps={edit('decision')}
           dependents={reach}
@@ -74,7 +79,7 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
               <ul className="rejected">
                 {v.map((r, i) => (
                   <li key={i}>
-                    <span className="muted">rejected:</span> {r}
+                    <span className="muted">rejected:</span> <TokenText text={r} />
                   </li>
                 ))}
               </ul>

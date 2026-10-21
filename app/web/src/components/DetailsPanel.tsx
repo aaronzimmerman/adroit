@@ -9,7 +9,7 @@ import { ViewDetails } from './ViewDetails.jsx';
  * @DecisionRef ui:details-panel-right — the current node's details sit on the right.
  * @DecisionRef ui:one-layout-every-root — one panel for nodes of every root.
  */
-export function DetailsPanel({ current }: { current: string }) {
+export function DetailsPanel({ current, field }: { current: string; field?: string }) {
   const { view } = useLedger();
   const place = view.places[current];
   if (!place) return <aside className="details-panel muted">Select a place in the hierarchy.</aside>;
@@ -17,7 +17,7 @@ export function DetailsPanel({ current }: { current: string }) {
     <aside className="details-panel" aria-label="details">
       <FindingsHere place={current} />
       {place.node && <NodeDetails place={current} node={place.node} />}
-      {place.view && <ViewDetails record={place.view} />}
+      {place.view && <ViewDetails record={place.view} field={field} />}
       {!place.node && !place.view && (
         <article>
           <h2>{place.label}</h2>

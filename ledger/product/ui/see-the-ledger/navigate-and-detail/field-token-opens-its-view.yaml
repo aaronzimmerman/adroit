@@ -1,0 +1,8 @@
+id: ui:field-token-opens-its-view
+name: Field token opens its view
+decision: >-
+  A field token in a decision's text is shown as the field it names, and selecting it makes that
+  view current with the field picked out.
+context: >-
+  "add the ability in the UI to click such a field to link to the model where it is defined"; a
+  token that names no existing field stays plain text, and the check reports it.

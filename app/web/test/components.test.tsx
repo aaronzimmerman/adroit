@@ -134,6 +134,22 @@ describe('the details panel', () => {
     expect(travel).toHaveBeenCalledWith('product/demo');
   });
 
+  // @DecisionRef ui:field-token-opens-its-view — a token naming a field travels to its view, the
+  // field picked out; one naming no field stays plain text.
+  it('shows a field token as its field, and selecting it opens the view with the field picked out', () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only/deep-leaf.yaml" />);
+    const decision = screen.getByRole('region', { name: 'the decision' });
+    fireEvent.click(within(decision).getByRole('button', { name: 'field size of view:widget' }));
+    expect(travel).toHaveBeenCalledWith('models/widget.yaml', 'size');
+    expect(within(decision).queryByRole('button', { name: /colour/ })).toBeNull();
+    expect(decision.textContent).toContain('never by {widget.colour}.');
+    cleanup();
+    wrap(<DetailsPanel current="models/widget.yaml" field="size" />);
+    const fields = screen.getByRole('table', { name: 'fields' });
+    expect(within(fields).getByText('size').closest('tr')!.getAttribute('aria-current')).toBe('true');
+    expect(within(fields).getByText('name').closest('tr')!.getAttribute('aria-current')).toBeNull();
+  });
+
   // @DecisionRef ui:views-read-as-fields — each typed field: type, citations, meaning; and links.
   it('reads a view as its typed fields, with its links', () => {
     wrap(<DetailsPanel current="models/widget.yaml" />);

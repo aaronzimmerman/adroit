@@ -3,8 +3,8 @@ import type { ChangeOutcome, LedgerView } from '@adroit/shared';
 
 export interface Ledger {
   view: LedgerView;
-  /** Make a place current in both panels. */
-  travel: (place: string) => void;
+  /** Make a place current in both panels; for a view, optionally one of its fields picked out. */
+  travel: (place: string, field?: string) => void;
   /** Report a landed change: the view reloads and the user sees what happened. */
   landed: (outcome: ChangeOutcome) => void;
 }

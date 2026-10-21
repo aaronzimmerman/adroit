@@ -99,7 +99,10 @@ context: >-                           # one free-form text: the author's own thi
   `references:`. A decision that addresses one field writes it inline as `{slug.field}` — the
   view's slug and the field's name — in its decision or rejected text, and the token implies the
   reference, so `references:` is needed only where no token names the view. A token replaces prose
-  that names the field's data; concepts stay prose.
+  that names the field's data; concepts stay prose. Tokens are the shared nomenclature: every
+  decision that speaks of a piece of data names it by the one field that defines it, so two
+  decisions can't mean different data by the same words, or the same data by different words, and
+  the check holds every name to a field that exists.
 - **Context is the author's own thinking.** One free-form text the author writes in, with no
   sub-keys. It is never history (no dates, no account of how a decision was minted, split, lifted
   or superseded) and never provenance, source pointers or links in disguise; version control holds

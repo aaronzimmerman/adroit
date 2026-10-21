@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ViewRecord } from '@adroit/shared';
 import { useLedger } from '../context.js';
 
@@ -18,8 +19,11 @@ function IdLink({ id }: { id: string }) {
  * then the views it consumes and the principles it grounds in. It is read here, never changed.
  * @DecisionRef ui:views-read-as-fields — typed fields, not a decision tree.
  * @DecisionRef ui:views-not-changed-here — no control here edits a view.
+ * @DecisionRef ui:field-token-opens-its-view — a field reached from a token is picked out.
  */
-export function ViewDetails({ record }: { record: ViewRecord }) {
+export function ViewDetails({ record, field }: { record: ViewRecord; field?: string }) {
+  const picked = useRef<HTMLTableRowElement>(null);
+  useEffect(() => picked.current?.scrollIntoView?.({ block: 'center' }), []);
   return (
     <article className="view-details">
       <h2>{record.id}</h2>
@@ -44,7 +48,12 @@ export function ViewDetails({ record }: { record: ViewRecord }) {
         </thead>
         <tbody>
           {record.fields.map((f) => (
-            <tr key={f.name}>
+            <tr
+              key={f.name}
+              ref={f.name === field ? picked : undefined}
+              className={f.name === field ? 'picked' : undefined}
+              aria-current={f.name === field ? 'true' : undefined}
+            >
               <td>
                 <code>{f.name}</code>
               </td>

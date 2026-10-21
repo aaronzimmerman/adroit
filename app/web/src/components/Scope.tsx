@@ -1,5 +1,6 @@
 import type { NodeView } from '@adroit/shared';
 import { labelOf, useLedger } from '../context.js';
+import { TokenText } from './TokenText.jsx';
 
 /**
  * Where the current node sits: the path down to it, and the parent's decision as the how this
@@ -28,7 +29,7 @@ export function PlaceInTree({ node }: { node: NodeView }) {
       )}
       {parentNode && (
         <p className="muted">
-          A how of: <span>{parentNode.doc.decision}</span>
+          A how of: <TokenText text={parentNode.doc.decision} />
         </p>
       )}
     </section>
@@ -61,7 +62,7 @@ export function Grafted({ node }: { node: NodeView }) {
                 </button>
               )}
             </div>
-            {root ? <p>{root.doc.decision}</p> : <p className="muted">No capability by this name has a root node.</p>}
+            {root ? <p><TokenText text={root.doc.decision} /></p> : <p className="muted">No capability by this name has a root node.</p>}
           </div>
         );
       })}

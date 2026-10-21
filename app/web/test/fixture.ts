@@ -86,7 +86,7 @@ export function makeView(): LedgerView {
     'product/demo/parent-rule/online-only/deep-leaf.yaml': node(
       'product/demo/parent-rule/online-only/deep-leaf.yaml',
       'product/demo/parent-rule/online-only',
-      { id: 'app:deep-leaf', name: 'Deep leaf', decision: 'Deep leaves live here.' },
+      { id: 'app:deep-leaf', name: 'Deep leaf', decision: 'Deep leaves size by {widget.size}, never by {widget.colour}.' },
       { ancestors: ['product/demo', 'product/demo/parent-rule', 'product/demo/parent-rule/online-only'] },
     ),
     'capabilities/notify': node(

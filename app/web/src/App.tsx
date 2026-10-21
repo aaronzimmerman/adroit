@@ -28,6 +28,7 @@ const firstPlace = (view: LedgerView): string =>
 export function App() {
   const [view, setView] = useState<LedgerView | null>(null);
   const [current, setCurrent] = useState('');
+  const [field, setField] = useState<string | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [findingsOpen, setFindingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -35,9 +36,10 @@ export function App() {
   const [version, setVersion] = useState(0);
   const currentRef = useRef('');
 
-  const go = useCallback((v: LedgerView, place: string) => {
+  const go = useCallback((v: LedgerView, place: string, picked?: string) => {
     currentRef.current = place;
     setCurrent(place);
+    setField(picked);
     setExpanded((e) => new Set([...e, ...chainOf(v, place), place]));
   }, []);
 
@@ -69,8 +71,8 @@ export function App() {
 
   /** @DecisionRef ui:selecting-a-hit-travels — travel makes a place current in both panels. */
   const travel = useCallback(
-    (place: string) => {
-      if (view?.places[place]) go(view, place);
+    (place: string, picked?: string) => {
+      if (view?.places[place]) go(view, place, picked);
     },
     [view, go],
   );
@@ -130,7 +132,7 @@ export function App() {
               })
             }
           />
-          <DetailsPanel key={`${current}#${version}`} current={current} />
+          <DetailsPanel key={`${current}#${field ?? ''}#${version}`} current={current} field={field} />
         </main>
       </div>
     </LedgerContext.Provider>
