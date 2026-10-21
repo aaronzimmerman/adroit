@@ -1,0 +1,8 @@
+id: ui:current-kept-in-view
+name: Current kept in view
+decision: >-
+  Whenever the current node changes, however it was reached, the navigation panel brings its row
+  into view.
+context: >-
+  Following a field token to its view left the view's row far below a long expanded branch: the tree
+  had opened to it, but the user could not see where they now were.

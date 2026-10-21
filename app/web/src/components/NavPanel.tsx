@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { Place } from '@adroit/shared';
 import { useLedger } from '../context.js';
 
@@ -9,6 +10,7 @@ import { useLedger } from '../context.js';
  * @DecisionRef ui:one-layout-every-root — product, capabilities, engineering and models all
  * walk in this one tree.
  * @DecisionRef ui:up-a-level-down-another — up to the parent, then into any other subtree.
+ * @DecisionRef ui:current-kept-in-view — the current row is scrolled into view whenever it changes.
  */
 export function NavPanel({
   current,
@@ -20,6 +22,10 @@ export function NavPanel({
   onToggle: (place: string) => void;
 }) {
   const { view, travel } = useLedger();
+  const currentRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    currentRow.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [current]);
   const here = view.places[current];
   const parent = here?.parent ?? null;
   const findingsAt = new Map<string, number>();
@@ -33,6 +39,7 @@ export function NavPanel({
     return (
       <li key={place.path}>
         <div
+          ref={place.path === current ? currentRow : undefined}
           className={`nav-row ${place.path === current ? 'current' : ''} kind-${place.kind}`}
           style={{ paddingLeft: 6 + depth * 14 }}
         >

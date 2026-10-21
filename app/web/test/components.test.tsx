@@ -53,6 +53,28 @@ describe('the navigation panel', () => {
     expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
   });
 
+  // @DecisionRef ui:current-kept-in-view — the current row is brought into view each time it changes.
+  it('brings the current row into view whenever the current node changes', () => {
+    const scrolled: string[] = [];
+    // jsdom has no layout, so no scrollIntoView: record which row asks for it. Browsers may return
+    // a promise from it, which an effect must never hand back to React as its cleanup.
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this.textContent ?? '');
+      return Promise.resolve() as unknown as void;
+    };
+    const open = new Set(['product', 'product/demo', 'models']);
+    const { rerender } = wrap(<NavPanel current="product/demo" expanded={open} onToggle={() => {}} />);
+    expect(scrolled.at(-1)).toContain('Demo');
+    rerender(
+      <LedgerContext.Provider value={{ view, travel, landed }}>
+        <NavPanel current="models/widget.yaml" expanded={open} onToggle={() => {}} />
+      </LedgerContext.Provider>,
+    );
+    expect(scrolled.at(-1)).toContain('view:widget');
+    cleanup();
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+  });
+
   it('goes up a level from the current node', () => {
     wrap(<NavPanel current="product/demo/parent-rule" expanded={new Set(['product', 'product/demo'])} onToggle={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /up a level/ }));
@@ -144,10 +166,19 @@ describe('the details panel', () => {
     expect(within(decision).queryByRole('button', { name: /colour/ })).toBeNull();
     expect(decision.textContent).toContain('never by {widget.colour}.');
     cleanup();
+    const scrolled: string[] = [];
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this.textContent ?? '');
+      return Promise.resolve() as unknown as void;
+    };
     wrap(<DetailsPanel current="models/widget.yaml" field="size" />);
     const fields = screen.getByRole('table', { name: 'fields' });
     expect(within(fields).getByText('size').closest('tr')!.getAttribute('aria-current')).toBe('true');
     expect(within(fields).getByText('name').closest('tr')!.getAttribute('aria-current')).toBeNull();
+    expect(scrolled).toHaveLength(1);
+    expect(scrolled[0]).toContain('size');
+    cleanup();
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   });
 
   // @DecisionRef ui:views-read-as-fields — each typed field: type, citations, meaning; and links.

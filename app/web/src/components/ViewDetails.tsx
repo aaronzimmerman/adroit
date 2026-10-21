@@ -23,7 +23,9 @@ function IdLink({ id }: { id: string }) {
  */
 export function ViewDetails({ record, field }: { record: ViewRecord; field?: string }) {
   const picked = useRef<HTMLTableRowElement>(null);
-  useEffect(() => picked.current?.scrollIntoView?.({ block: 'center' }), []);
+  useEffect(() => {
+    picked.current?.scrollIntoView?.({ block: 'center' });
+  }, []);
   return (
     <article className="view-details">
       <h2>{record.id}</h2>
