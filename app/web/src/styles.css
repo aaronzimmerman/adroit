@@ -141,3 +141,8 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 .crumb { position: relative; display: inline-block; }
 .crumb-tip { display: none; position: absolute; top: 100%; left: 0; z-index: 20; width: max-content; max-width: 420px; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 13.5px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .crumb:hover .crumb-tip, .crumb:focus-within .crumb-tip { display: block; }
+
+.question-row { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; }
+.question-text { flex: 1; min-width: 0; }
+.question-row input { flex: 1; }
+.question-row:not(:hover) .edit-button { opacity: 0.4; }

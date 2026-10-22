@@ -313,18 +313,18 @@ describe('editing in place', () => {
   // @DecisionRef ui:single-field-one-act — nothing suspect: the edit commits in one act.
   it('an edit that makes nothing suspect commits straight away', async () => {
     wrap(<DetailsPanel current="product/demo" />);
-    fireEvent.click(screen.getByRole('button', { name: 'edit questions' }));
-    fireEvent.change(screen.getByLabelText('questions, one per line'), { target: { value: 'Does the demo need accounts?\nWho hosts it?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'edit name' }));
+    fireEvent.change(screen.getByLabelText('name'), { target: { value: 'The demo' } });
     fireEvent.click(screen.getByRole('button', { name: 'save' }));
     await waitFor(() => expect(landed).toHaveBeenCalled());
-    const commit = calls.find((c) => c.url === '/api/change')!.body as { operations: { value: string[] }[] };
-    expect(commit.operations[0].value).toEqual(['Does the demo need accounts?', 'Who hosts it?']);
+    const commit = calls.find((c) => c.url === '/api/change')!.body as { operations: { value: string }[] };
+    expect(commit.operations[0].value).toBe('The demo');
   });
 
   // @DecisionRef ui:edit-offers-clearing — checked by default, and the editor can uncheck it.
   it('editing a dubious node offers to clear its mark, on by default', async () => {
     wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
-    fireEvent.click(screen.getByRole('button', { name: 'edit questions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'edit name' }));
     expect((screen.getByRole('checkbox', { name: /clears its dubious mark/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'save' }));
     await waitFor(() => expect(landed).toHaveBeenCalled());
@@ -332,7 +332,7 @@ describe('editing in place', () => {
     cleanup();
     calls = [];
     wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
-    fireEvent.click(screen.getByRole('button', { name: 'edit questions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'edit name' }));
     fireEvent.click(screen.getByRole('checkbox', { name: /clears its dubious mark/ }));
     fireEvent.click(screen.getByRole('button', { name: 'save' }));
     await waitFor(() => expect(calls.some((c) => c.url === '/api/change')).toBe(true));
@@ -353,12 +353,13 @@ describe('editing in place', () => {
   it('marks a node dubious only while asking a question, which stays on the node', async () => {
     wrap(<DetailsPanel current="product/demo/parent-rule" />);
     expect(screen.queryByRole('button', { name: /mark dubious/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'ask a question…' }));
+    expect(screen.getAllByRole('button', { name: /add a question/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'add a question' }));
     const form = screen.getByLabelText('ask a question');
     fireEvent.change(within(form).getByLabelText(/the question/), { target: { value: ' contradicts\n the story? ' } });
-    fireEvent.click(within(form).getByRole('checkbox', { name: /mark this node dubious/ }));
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'mark decision dubious' }));
     expect(within(form).getByText(/The 2 nodes beneath are marked too/)).toBeTruthy();
-    fireEvent.click(within(form).getByRole('button', { name: 'ask and mark dubious' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'add and mark dubious' }));
     await waitFor(() => expect(landed).toHaveBeenCalled());
     expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
       { op: 'edit-node', place: 'product/demo/parent-rule', field: 'questions', value: ['contradicts the story?'], clearDubious: false },
@@ -366,14 +367,35 @@ describe('editing in place', () => {
     ]);
   });
 
-  it('asks a question without marking anything', async () => {
+  it('adds a question without marking anything', async () => {
     wrap(<DetailsPanel current="product/demo" />);
-    fireEvent.click(screen.getByRole('button', { name: 'ask a question…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'add a question' }));
     fireEvent.change(screen.getByLabelText(/the question/), { target: { value: 'Who hosts it?' } });
-    fireEvent.click(screen.getByRole('button', { name: 'ask' }));
+    fireEvent.click(screen.getByRole('button', { name: 'add' }));
     await waitFor(() => expect(landed).toHaveBeenCalled());
     expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
       { op: 'edit-node', place: 'product/demo', field: 'questions', value: ['Does the demo need accounts?', 'Who hosts it?'], clearDubious: false },
+    ]);
+  });
+
+  // @DecisionRef ui:questions-one-at-a-time — each question edited or deleted on its own.
+  it('edits one question in place, leaving the others', async () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit question 1' }));
+    fireEvent.change(screen.getByLabelText('question 1'), { target: { value: 'Does the demo need\n an account?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
+      { op: 'edit-node', place: 'product/demo', field: 'questions', value: ['Does the demo need an account?'], clearDubious: false },
+    ]);
+  });
+
+  it('deletes one question', async () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    fireEvent.click(screen.getByRole('button', { name: 'delete question 1' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
+      { op: 'edit-node', place: 'product/demo', field: 'questions', value: [], clearDubious: false },
     ]);
   });
 

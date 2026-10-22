@@ -1,0 +1,13 @@
+id: ui:questions-one-at-a-time
+name: Questions one at a time
+decision: >-
+  Questions are added one at a time, and each existing question carries its own controls to edit or
+  delete it.
+rejected:
+  - >-
+    the whole question list edited as one block beside a separate add control — two ways to add a
+    question, and every edit rewrites them all
+context: >-
+  "we have 2 question add buttons, we only need the one 'add a question' and only need the checkbox
+  to say 'mark decision dubious'. Then when a question exists there is a button to edit or delete
+  it."

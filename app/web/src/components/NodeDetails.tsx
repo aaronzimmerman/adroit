@@ -137,24 +137,7 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           {dubious && <span className="badge dubious">dubious</span>}
         </summary>
         <DubiousNote place={place} line={doc.dubious} />
-        <EditInPlace
-          label="questions"
-          value={doc.questions ?? []}
-          render={(qs) =>
-            qs.length ? (
-              <ul className="questions">
-                {qs.map((q, i) => (
-                  <li key={i}>{q}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No open questions.</p>
-            )
-          }
-          editor={linesEditor('questions, one per line')}
-          toOps={(qs, c) => edit('questions')(trimmed(qs), c)}
-          dubious={dubious}
-        />
+        <Questions place={place} questions={doc.questions ?? []} />
         <AskQuestion place={place} questions={doc.questions ?? []} below={reach} />
       </details>
 
@@ -239,6 +222,54 @@ function DubiousNote({ place, line }: { place: string; line?: string }) {
   );
 }
 
+/** One line: a question is one line of the list, and a dubious reason is one line. */
+const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * The node's questions, each with its own controls to edit or delete it.
+ * @DecisionRef ui:questions-one-at-a-time — each question edited or deleted on its own.
+ */
+function Questions({ place, questions }: { place: string; questions: string[] }) {
+  const [ops, setOps] = useState<Operation[] | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [draft, setDraft] = useState('');
+  if (ops) return <ChangeFlow operations={ops} onCancel={() => setOps(null)} />;
+  const commit = (next: string[]) => setOps([{ op: 'edit-node', place, field: 'questions', value: next, clearDubious: false }]);
+  if (questions.length === 0) return null;
+  return (
+    <ul className="questions">
+      {questions.map((q, i) =>
+        editing === i ? (
+          <li key={i} className="question-row">
+            <input aria-label={`question ${i + 1}`} value={draft} onChange={(e) => setDraft(e.target.value)} />
+            <button className="primary" disabled={!oneLine(draft)} onClick={() => commit(questions.map((x, j) => (j === i ? oneLine(draft) : x)))}>
+              save
+            </button>
+            <button onClick={() => setEditing(null)}>cancel</button>
+          </li>
+        ) : (
+          <li key={i} className="question-row">
+            <span className="question-text">{q}</span>
+            <button
+              className="edit-button"
+              aria-label={`edit question ${i + 1}`}
+              onClick={() => {
+                setDraft(q);
+                setEditing(i);
+              }}
+            >
+              edit
+            </button>
+            <button className="edit-button" aria-label={`delete question ${i + 1}`} onClick={() => commit(questions.filter((_, j) => j !== i))}>
+              delete
+            </button>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
 /**
  * Asking a question about the node, and with it, marking the node dubious: the mark needs a
  * question, which states what was seen and stays on the node.
@@ -253,12 +284,11 @@ function AskQuestion({ place, questions, below }: { place: string; questions: st
   if (!asking) {
     return (
       <button className="link" onClick={() => setAsking(true)}>
-        ask a question…
+        add a question
       </button>
     );
   }
-  // one line: a question is one line of the list, and a dubious reason is one line
-  const q = text.replace(/\s+/g, ' ').trim();
+  const q = oneLine(text);
   return (
     <div className="form" aria-label="ask a question">
       <label>
@@ -267,7 +297,7 @@ function AskQuestion({ place, questions, below }: { place: string; questions: st
       </label>
       <label className="checkbox-row">
         <input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} />
-        it's a contradiction — mark this node dubious
+        mark decision dubious
       </label>
       {mark && below > 0 && (
         <p className="muted">
@@ -285,7 +315,7 @@ function AskQuestion({ place, questions, below }: { place: string; questions: st
             ])
           }
         >
-          {mark ? 'ask and mark dubious' : 'ask'}
+          {mark ? 'add and mark dubious' : 'add'}
         </button>
         <button onClick={() => setAsking(false)}>cancel</button>
       </div>
