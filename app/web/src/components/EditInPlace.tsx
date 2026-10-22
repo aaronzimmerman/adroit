@@ -16,6 +16,7 @@ export function EditInPlace<T>({
   toOps,
   dependents = 0,
   dubious = false,
+  editText = 'edit',
 }: {
   label: string;
   value: T;
@@ -26,6 +27,8 @@ export function EditInPlace<T>({
   dependents?: number;
   /** Whether the node carries a dubious mark the edit could clear. */
   dubious?: boolean;
+  /** The edit button's text, where a bare "edit" would not say what it opens. */
+  editText?: string;
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'flow'>('view');
   const [draft, setDraft] = useState<T>(value);
@@ -47,7 +50,7 @@ export function EditInPlace<T>({
             setMode('edit');
           }}
         >
-          edit
+          {editText}
         </button>
       </div>
     );

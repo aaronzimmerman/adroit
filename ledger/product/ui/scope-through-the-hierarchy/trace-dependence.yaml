@@ -1,13 +1,16 @@
 id: ui:trace-dependence
 name: Trace dependence
 decision: >-
-  At any node the user sees where it sits: the path down to it, each step selectable, and the
-  parent's decision as the how this node refines.
+  At any node the user sees where it sits: the path down to it, each step selectable and showing its
+  own decision on hover.
 rejected:
   - >-
     every ancestor's decision, and every capability included above, listed as binding the node — a
     decision answers how its parent works and informs only its own branch; nothing above governs
     downward
   - >-
-    showing only the node's own decision — a node reads as a refinement of its parent, so the
-    parent's decision is needed to read it
+    the parent's decision written out above the node — it competes with the node's own decision; the
+    path carries it, one hover away
+context: >-
+  "rather than 'A how of: …' lets add a hover state to each parent on the breadcrumb trail that
+  shows just that decision text"

@@ -137,15 +137,24 @@ describe('the details panel', () => {
     expect(screen.getByText('Does the demo need accounts?')).toBeTruthy();
   });
 
-  // @DecisionRef ui:trace-dependence — the path down, each step selectable, and the parent's how.
-  it('shows where a node sits: its path and its parent\'s decision, nothing listed as binding it', () => {
+  // @DecisionRef ui:trace-dependence — the path down, each step selectable, its decision on hover.
+  it('shows where a node sits: its path, each step\'s decision on hover, nothing listed as binding it', () => {
     wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
     const at = screen.getByRole('region', { name: 'where it sits' });
     const path = within(at).getByRole('navigation', { name: 'path' });
     expect(within(path).getAllByRole('button').map((b) => b.textContent)).toEqual(['Demo', 'Parent rule']);
-    expect(within(at).getByText(/Parents rule broadly/)).toBeTruthy();
-    expect(within(at).queryByText(/A user can demo things/)).toBeNull();
-    expect(screen.getByText('No capability grafted beneath.')).toBeTruthy();
+    const tips = within(path).getAllByRole('tooltip', { hidden: true }).map((t) => t.textContent);
+    expect(tips).toEqual(['A user can demo things.', 'Parents rule broadly.']);
+    const step = within(path).getByRole('button', { name: 'Parent rule' });
+    expect(document.getElementById(step.getAttribute('aria-describedby')!)!.textContent).toBe('Parents rule broadly.');
+    expect(at.textContent).not.toContain('A how of');
+    // @DecisionRef ui:details-panel-right — the header names the id alone, no path or tree.
+    const header = screen.getByRole('heading', { name: 'Online only' }).closest('header')!;
+    expect(header.textContent).toContain('app:online-only');
+    expect(header.textContent).not.toContain('product/demo');
+    // the empty grafts line says nothing; its control says what it does
+    expect(screen.queryByText('No capability grafted beneath.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'edit includes' }).textContent).toBe('graft a capability…');
     fireEvent.click(within(path).getByRole('button', { name: 'Demo' }));
     expect(travel).toHaveBeenCalledWith('product/demo');
   });
@@ -340,16 +349,48 @@ describe('editing in place', () => {
     ]);
   });
 
-  // @DecisionRef ui:dubious-set-by-hand — the person states what they saw.
-  it('marks a node dubious by hand with the reason given', async () => {
+  // @DecisionRef ui:dubious-set-by-hand — marked while asking a question, the question its reason.
+  it('marks a node dubious only while asking a question, which stays on the node', async () => {
     wrap(<DetailsPanel current="product/demo/parent-rule" />);
-    fireEvent.click(screen.getByRole('button', { name: 'mark dubious…' }));
-    fireEvent.change(screen.getByPlaceholderText('one line: the contradiction'), { target: { value: 'contradicts the story' } });
-    fireEvent.click(screen.getByRole('button', { name: 'mark dubious' }));
+    expect(screen.queryByRole('button', { name: /mark dubious/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'ask a question…' }));
+    const form = screen.getByLabelText('ask a question');
+    fireEvent.change(within(form).getByLabelText(/the question/), { target: { value: ' contradicts\n the story? ' } });
+    fireEvent.click(within(form).getByRole('checkbox', { name: /mark this node dubious/ }));
+    expect(within(form).getByText(/The 2 nodes beneath are marked too/)).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'ask and mark dubious' }));
     await waitFor(() => expect(landed).toHaveBeenCalled());
     expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
-      { op: 'mark-dubious', place: 'product/demo/parent-rule', reason: 'contradicts the story' },
+      { op: 'edit-node', place: 'product/demo/parent-rule', field: 'questions', value: ['contradicts the story?'], clearDubious: false },
+      { op: 'mark-dubious', place: 'product/demo/parent-rule', reason: 'contradicts the story?' },
     ]);
+  });
+
+  it('asks a question without marking anything', async () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    fireEvent.click(screen.getByRole('button', { name: 'ask a question…' }));
+    fireEvent.change(screen.getByLabelText(/the question/), { target: { value: 'Who hosts it?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ask' }));
+    await waitFor(() => expect(landed).toHaveBeenCalled());
+    expect((calls.find((c) => c.url === '/api/change')!.body as { operations: unknown[] }).operations).toEqual([
+      { op: 'edit-node', place: 'product/demo', field: 'questions', value: ['Does the demo need accounts?', 'Who hosts it?'], clearDubious: false },
+    ]);
+  });
+
+  // @DecisionRef ui:dubious-with-questions — the mark sits with the questions, open while it stands.
+  // @DecisionRef ui:header-one-line — name, id and the dependents as a bare number on one line.
+  it('puts the dubious mark with the open questions, and the header on one line', () => {
+    wrap(<DetailsPanel current="product/demo/parent-rule/online-only" />);
+    const questions = screen.getByRole('group', { name: 'questions' }) as HTMLDetailsElement;
+    expect(questions.open).toBe(true);
+    expect(within(questions).getByRole('note').textContent).toContain('"Parent rule" changed');
+    cleanup();
+    wrap(<DetailsPanel current="product/demo/parent-rule" />);
+    const line = screen.getByRole('heading', { name: 'Parent rule' }).closest('.title-line')!;
+    expect(line.textContent).toContain('app:parent-rule');
+    const count = within(line as HTMLElement).getByLabelText('2 nodes depend on this one');
+    expect(count.textContent).toBe('2');
+    expect(screen.queryByText(/depend on this one/)).toBeNull();
   });
 
   it('a refusal explains itself, and the user returns to the edit', async () => {

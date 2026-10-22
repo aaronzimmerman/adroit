@@ -17,6 +17,7 @@ const trimmed = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean);
  * @DecisionRef ui:details-panel-right — the right panel shows the current node: its decision with
  * its rejected alternatives, and its dubious mark.
  * @DecisionRef ui:decision-text-prominent — the decision is the largest text here, set apart.
+ * @DecisionRef ui:header-one-line — name, id and dependents on one line, the last two lighter.
  * @DecisionRef ui:all-but-id-editable — every field edits here; the id is shown, fixed.
  */
 export function NodeDetails({ place, node }: { place: string; node: NodeView }) {
@@ -36,27 +37,19 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
         <EditInPlace
           label="name"
           value={doc.name}
-          render={(v) => <h2>{v}</h2>}
+          render={(v) => (
+            <div className="title-line">
+              <h2>{v}</h2>
+              <code className="decision-id">{doc.id}</code>
+              {reach > 0 && <Dependents count={reach} />}
+              {dubious && <span className="badge dubious">dubious</span>}
+            </div>
+          )}
           editor={textEditor('name', 1)}
           toOps={edit('name')}
           dubious={dubious}
         />
-        <div className="row">
-          <code className="decision-id">{doc.id}</code>
-          <span className="muted">
-            {place} · {node.tree}
-          </span>
-        </div>
-        {/* @DecisionRef eng:prominence-follows-dependence — what depends on this node is surfaced
-            where it is edited, weighted by how much does. */}
-        {reach > 0 && (
-          <div className={`dependents ${reach >= 10 ? 'heavy' : ''}`}>
-            {reach} node{reach === 1 ? '' : 's'} depend{reach === 1 ? 's' : ''} on this one
-          </div>
-        )}
       </header>
-
-      <DubiousMark place={place} line={doc.dubious} />
 
       <section aria-label="the decision" className="decision-card">
         <EditInPlace
@@ -135,12 +128,15 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
       </section>
 
       {/* @DecisionRef ui:notes-collapsed — questions and context are closed until opened, each
-          saying that it is there. */}
-      <details className="note-group" aria-label="questions">
+          saying that it is there.
+          @DecisionRef ui:dubious-with-questions — the mark sits with the questions, open while it stands. */}
+      <details className="note-group" aria-label="questions" open={dubious || undefined}>
         <summary>
           Questions{' '}
           <span className="muted">{doc.questions?.length ? `(${doc.questions.length})` : '— none'}</span>
+          {dubious && <span className="badge dubious">dubious</span>}
         </summary>
+        <DubiousNote place={place} line={doc.dubious} />
         <EditInPlace
           label="questions"
           value={doc.questions ?? []}
@@ -159,6 +155,7 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           toOps={(qs, c) => edit('questions')(trimmed(qs), c)}
           dubious={dubious}
         />
+        <AskQuestion place={place} questions={doc.questions ?? []} below={reach} />
       </details>
 
       <details className="note-group" aria-label="context">
@@ -188,10 +185,9 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
               <p className="muted">
                 grafted beneath: <span className="graft-names">{v.join(', ')}</span>
               </p>
-            ) : (
-              <p className="muted">No capability grafted beneath.</p>
-            )
+            ) : null
           }
+          editText={doc.includes?.length ? 'edit' : 'graft a capability…'}
           editor={linesEditor('includes, one per line', 2)}
           toOps={(v, c) => edit('includes')(trimmed(v), c)}
           dependents={reach}
@@ -205,45 +201,93 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
 }
 
 /**
- * The node's dubious mark, and the two things a person does with it.
- * @DecisionRef ui:dubious-set-by-hand — mark it on seeing a contradiction, saying what was seen.
+ * How many nodes depend on this one: a bare number beside a below icon, its meaning on hover.
+ * @DecisionRef eng:prominence-follows-dependence — surfaced where the node is edited, weighted by
+ * how much depends on it.
+ */
+function Dependents({ count }: { count: number }) {
+  const meaning = `${count} node${count === 1 ? '' : 's'} depend${count === 1 ? 's' : ''} on this one`;
+  return (
+    <span className={`dependents ${count >= 10 ? 'heavy' : ''}`} title={meaning} aria-label={meaning}>
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" className="below-icon">
+        <circle cx="8" cy="3" r="2" fill="currentColor" />
+        <path d="M8 5v3M4 11V8h8v3" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <circle cx="4" cy="13" r="2" fill="currentColor" />
+        <circle cx="12" cy="13" r="2" fill="currentColor" />
+      </svg>
+      {count}
+    </span>
+  );
+}
+
+/**
+ * The node's dubious mark, and confirming it after reading the node through.
  * @DecisionRef ui:dubious-clears-on-work — confirm it after reading it through, in a commit.
  * @DecisionRef eng:one-step-reversible — confirming is one step: a commit is easily reverted.
  */
-function DubiousMark({ place, line }: { place: string; line?: string }) {
+function DubiousNote({ place, line }: { place: string; line?: string }) {
   const [ops, setOps] = useState<Operation[] | null>(null);
-  const [marking, setMarking] = useState(false);
-  const [reason, setReason] = useState('');
+  if (line === undefined) return null;
   if (ops) return <ChangeFlow operations={ops} onCancel={() => setOps(null)} />;
-  if (line !== undefined) {
-    return (
-      <div className="dubious-box" role="note">
-        <strong>Dubious:</strong> {line}
-        <div className="row">
-          <button onClick={() => setOps([{ op: 'confirm', place }])}>I read it through and it holds — confirm</button>
-        </div>
+  return (
+    <div className="dubious-box" role="note">
+      <strong>Dubious:</strong> {line}
+      <div className="row">
+        <button onClick={() => setOps([{ op: 'confirm', place }])}>I read it through and it holds — confirm</button>
       </div>
-    );
-  }
-  if (!marking) {
+    </div>
+  );
+}
+
+/**
+ * Asking a question about the node, and with it, marking the node dubious: the mark needs a
+ * question, which states what was seen and stays on the node.
+ * @DecisionRef ui:dubious-set-by-hand — marked while asking a question, the question its reason.
+ */
+function AskQuestion({ place, questions, below }: { place: string; questions: string[]; below: number }) {
+  const [ops, setOps] = useState<Operation[] | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [text, setText] = useState('');
+  const [mark, setMark] = useState(false);
+  if (ops) return <ChangeFlow operations={ops} onCancel={() => setOps(null)} />;
+  if (!asking) {
     return (
-      <button className="link" onClick={() => setMarking(true)}>
-        mark dubious…
+      <button className="link" onClick={() => setAsking(true)}>
+        ask a question…
       </button>
     );
   }
+  // one line: a question is one line of the list, and a dubious reason is one line
+  const q = text.replace(/\s+/g, ' ').trim();
   return (
-    <div className="form" aria-label="mark dubious">
+    <div className="form" aria-label="ask a question">
       <label>
-        what did you see?{' '}
-        <input value={reason} placeholder="one line: the contradiction" onChange={(e) => setReason(e.target.value)} />
+        the question{' '}
+        <textarea rows={2} value={text} placeholder="what is unclear, or what contradicts it?" onChange={(e) => setText(e.target.value)} />
       </label>
-      <p className="muted">Every node beneath is marked too, naming this one.</p>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} />
+        it's a contradiction — mark this node dubious
+      </label>
+      {mark && below > 0 && (
+        <p className="muted">
+          The {below} node{below === 1 ? '' : 's'} beneath {below === 1 ? 'is' : 'are'} marked too, naming this one.
+        </p>
+      )}
       <div className="row">
-        <button className="primary" disabled={!reason.trim()} onClick={() => setOps([{ op: 'mark-dubious', place, reason }])}>
-          mark dubious
+        <button
+          className="primary"
+          disabled={!q}
+          onClick={() =>
+            setOps([
+              { op: 'edit-node', place, field: 'questions', value: [...questions, q], clearDubious: false },
+              ...(mark ? [{ op: 'mark-dubious' as const, place, reason: q }] : []),
+            ])
+          }
+        >
+          {mark ? 'ask and mark dubious' : 'ask'}
         </button>
-        <button onClick={() => setMarking(false)}>cancel</button>
+        <button onClick={() => setAsking(false)}>cancel</button>
       </div>
     </div>
   );

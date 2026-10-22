@@ -71,8 +71,12 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 
 .details-panel { overflow: auto; padding: 16px 22px 60px; }
 .findings-here { list-style: none; padding: 8px 10px; margin: 0 0 12px; border: 1px solid var(--red); border-radius: 8px; }
-.dependents { display: inline-block; margin-top: 6px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--panel-2); }
-.dependents.heavy { font-size: 14px; font-weight: 600; color: var(--amber); }
+.title-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.title-line .decision-id { font-size: 12px; opacity: 0.75; }
+.dependents { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); cursor: default; }
+.dependents.heavy { color: var(--amber); }
+.below-icon { opacity: 0.85; }
+.note-group > summary .badge { margin-left: 8px; text-transform: none; letter-spacing: 0; }
 .dubious-box { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 8px; background: #2a2010; }
 .decision-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 16px 18px; margin: 12px 0 16px; background: var(--panel-2); }
 .decision-id { color: var(--accent); }
@@ -133,3 +137,7 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 .child-buttons { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .child-button { padding: 4px 10px; border-radius: 6px; text-align: left; }
 .child-button:hover { border-color: var(--accent); color: var(--accent); }
+
+.crumb { position: relative; display: inline-block; }
+.crumb-tip { display: none; position: absolute; top: 100%; left: 0; z-index: 20; width: max-content; max-width: 420px; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 13.5px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.crumb:hover .crumb-tip, .crumb:focus-within .crumb-tip { display: block; }

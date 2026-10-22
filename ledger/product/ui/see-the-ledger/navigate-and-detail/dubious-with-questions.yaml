@@ -1,0 +1,4 @@
+id: ui:dubious-with-questions
+name: Dubious with questions
+decision: >-
+  A node's dubious mark is shown with its questions, which stand open while the node is dubious.

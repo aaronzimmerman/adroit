@@ -163,6 +163,21 @@ describe('suspicion and the dubious mark', () => {
     await expect(one({ op: 'mark-dubious', place: 'product/demo', reason: 'two\nlines' })).rejects.toThrow(/one line/);
   });
 
+  // @DecisionRef ui:dubious-set-by-hand — the question and the mark it gives the reason for, one commit.
+  it('a question asked and the node marked dubious by it land as one commit', async () => {
+    const before = commits();
+    await land({
+      operations: [
+        { op: 'edit-node', place: ONLINE, field: 'questions', value: ['does offline still hold?'], clearDubious: false },
+        { op: 'mark-dubious', place: ONLINE, reason: 'does offline still hold?' },
+      ],
+    });
+    expect(commits()).toBe(before + 1);
+    expect(node(`${ONLINE}/self.yaml`).questions).toEqual(['does offline still hold?']);
+    expect(node(`${ONLINE}/self.yaml`).dubious).toBe('does offline still hold?');
+    expect(node(LEAF).dubious).toBe('"Online only" above was marked dubious (product/demo/parent-rule/online-only)');
+  });
+
   // @DecisionRef ui:dubious-clears-on-work — confirming removes the mark in a commit.
   it('confirming removes the mark in a commit, and never cascades', async () => {
     await one({ op: 'mark-dubious', place: ONLINE, reason: 'saw a contradiction' });

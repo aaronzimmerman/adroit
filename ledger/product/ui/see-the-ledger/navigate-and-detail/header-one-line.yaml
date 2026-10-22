@@ -1,0 +1,13 @@
+id: ui:header-one-line
+name: Header one line
+decision: >-
+  The node's name, id and dependents sit on one line, the id and dependents set lighter than the
+  name; the dependents are a bare number beside a below icon, their meaning on hover.
+rejected:
+  - >-
+    the id, the count and the dubious control stacked under the name, the count spelled out as
+    "nodes depend on this one" — three lines of chrome above the decision being read
+context: >-
+  "lets collapse this into one line with lighter ui treatements for the three below the name ... We
+  can just show the number dont need 'nodes depend on this'. LEts add an 'child' icon or 'below'
+  icon whatever communicates that semantic meaning instead of the copy."

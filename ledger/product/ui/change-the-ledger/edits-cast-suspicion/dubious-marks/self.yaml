@@ -1,8 +1,13 @@
 id: ui:dubious-set-by-hand
 name: Dubious marks
 decision: >-
-  A person can mark a node dubious from the UI on observing a contradiction, stating what they saw.
+  A person marks a node dubious from the UI while asking a question about it: the question states
+  what they saw, and stays on the node.
+rejected:
+  - >-
+    a mark-dubious control on its own beneath the node's name — marking dubious requires a question,
+    so it belongs with the questions
 context: >-
   "let's make it a field after all. That way a person can also set it manually if a contradiction is
-  observed". The mark's semantics (one line of reason, cascade, every reason kept, clearing never
-  cascades) are the methodology's (ADROIT.md, Dubious).
+  observed"; then "i think the dubious context belong with questions. WE show the ability to mark
+  dubious while adding a question. marking dubious requires a question."

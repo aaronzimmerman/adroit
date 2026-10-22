@@ -1,3 +1,7 @@
 id: ui:details-panel-right
 name: Details panel right
 decision: A details panel on the right shows the current node, its decision and its dubious mark.
+rejected:
+  - >-
+    the node's file path and tree beside its id — the path above it and the navigation panel already
+    say where it sits

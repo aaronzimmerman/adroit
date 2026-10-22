@@ -1,16 +1,13 @@
 import type { NodeView } from '@adroit/shared';
 import { labelOf, useLedger } from '../context.js';
-import { TokenText } from './TokenText.jsx';
 
 /**
- * Where the current node sits: the path down to it, and the parent's decision as the how this
- * node refines. Nothing above is listed as binding it.
- * @DecisionRef ui:trace-dependence — the path, each step selectable, and the parent's decision.
+ * Where the current node sits: the path down to it, each step showing its own decision on hover.
+ * Nothing above is listed as binding it.
+ * @DecisionRef ui:trace-dependence — the path, each step selectable, its decision on hover.
  */
 export function PlaceInTree({ node }: { node: NodeView }) {
   const { view, travel } = useLedger();
-  const parent = node.ancestors.at(-1);
-  const parentNode = parent !== undefined ? view.places[parent]?.node : undefined;
   return (
     <section aria-label="where it sits">
       {node.ancestors.length === 0 ? (
@@ -20,17 +17,19 @@ export function PlaceInTree({ node }: { node: NodeView }) {
           {node.ancestors.map((a, i) => (
             <span key={a}>
               {i > 0 && <span className="muted"> › </span>}
-              <button className="link" onClick={() => travel(a)}>
-                {labelOf(view, a)}
-              </button>
+              <span className="crumb">
+                <button className="link" onClick={() => travel(a)} aria-describedby={`crumb-${i}`}>
+                  {labelOf(view, a)}
+                </button>
+                {view.places[a]?.node && (
+                  <span className="crumb-tip" role="tooltip" id={`crumb-${i}`}>
+                    {view.places[a].node!.doc.decision}
+                  </span>
+                )}
+              </span>
             </span>
           ))}
         </nav>
-      )}
-      {parentNode && (
-        <p className="muted">
-          A how of: <TokenText text={parentNode.doc.decision} />
-        </p>
       )}
     </section>
   );
