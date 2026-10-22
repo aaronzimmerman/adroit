@@ -1,0 +1,4 @@
+id: ui:children-as-buttons
+name: Children as buttons
+decision: Beneath the current node, each child is shown as a button that makes it the current node.
+context: lets change the "beneath" to render more like buttons

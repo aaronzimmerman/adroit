@@ -1,0 +1,4 @@
+id: ui:reading-type-serif
+name: Reading type serif
+decision: The UI reads in a serif typeface; ids, paths and code stay monospaced.
+context: i think we should use a serif font

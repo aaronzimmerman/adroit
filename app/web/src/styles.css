@@ -14,7 +14,8 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, sans-serif; }
+/* @DecisionRef ui:reading-type-serif — the UI reads in a serif; ids, paths and code stay monospaced. */
+body { background: var(--bg); color: var(--text); font: 15px/1.5 'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino, Georgia, serif; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
 button {
   font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
@@ -127,3 +128,8 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 .graft-names { color: var(--accent); }
 .nav-row.graft .nav-label { font-style: italic; color: var(--accent); opacity: 0.85; }
 .badge.graft { color: var(--accent); border: 1px dashed var(--accent); background: none; }
+
+.rejected-group { margin: 2px 0 6px; }
+.child-buttons { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.child-button { padding: 4px 10px; border-radius: 6px; text-align: left; }
+.child-button:hover { border-color: var(--accent); color: var(--accent); }

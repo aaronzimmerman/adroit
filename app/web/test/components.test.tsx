@@ -151,6 +151,16 @@ describe('the details panel', () => {
   });
 
   // @DecisionRef ui:capabilities-shown-summarized — not a field here; only its editor.
+  // @DecisionRef ui:children-as-buttons — each child a button that makes it current.
+  it('shows each child beneath as a button that makes it current', () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    const beneath = screen.getByRole('region', { name: 'children' });
+    const child = within(beneath).getByRole('button', { name: 'Parent rule' });
+    expect(child.className).toContain('child-button');
+    fireEvent.click(child);
+    expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
+  });
+
   it('leaves a node\'s grafts out of its fields, editing them beneath', () => {
     wrap(<DetailsPanel current="product/demo" />);
     expect(screen.queryByRole('heading', { name: 'Includes' })).toBeNull();
@@ -168,6 +178,11 @@ describe('the details panel', () => {
     expect(questions.open).toBe(false);
     expect(context.open).toBe(false);
     expect(questions.querySelector('summary')!.textContent).toContain('none');
+    // @DecisionRef ui:rejected-collapsed — closed beneath the decision, saying how many.
+    const rejected = screen.getByRole('group', { name: 'rejected' }) as HTMLDetailsElement;
+    expect(rejected.open).toBe(false);
+    expect(rejected.querySelector('summary')!.textContent).toContain('(1)');
+    expect(rejected.closest('.decision-card')).toBeTruthy();
     expect(context.querySelector('summary')!.textContent).not.toContain('none');
     expect(screen.getByText('Parents rule broadly.').closest('.decision-card')).toBeTruthy();
     cleanup();

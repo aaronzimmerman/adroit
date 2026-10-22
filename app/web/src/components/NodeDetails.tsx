@@ -72,27 +72,33 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           dependents={reach}
           dubious={dubious}
         />
-        <EditInPlace
-          label="rejected"
-          value={doc.rejected ?? []}
-          render={(v) =>
-            v.length ? (
-              <ul className="rejected">
-                {v.map((r, i) => (
-                  <li key={i}>
-                    <span className="muted">rejected:</span> <TokenText text={r} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No rejected alternatives.</p>
-            )
-          }
-          editor={linesEditor('rejected, one per line')}
-          toOps={(v, c) => edit('rejected')(trimmed(v), c)}
-          dependents={reach}
-          dubious={dubious}
-        />
+        {/* @DecisionRef ui:rejected-collapsed — closed beneath the decision, saying how many. */}
+        <details className="note-group rejected-group" aria-label="rejected">
+          <summary>
+            Rejected <span className="muted">{doc.rejected?.length ? `(${doc.rejected.length})` : '— none'}</span>
+          </summary>
+          <EditInPlace
+            label="rejected"
+            value={doc.rejected ?? []}
+            render={(v) =>
+              v.length ? (
+                <ul className="rejected">
+                  {v.map((r, i) => (
+                    <li key={i}>
+                      <TokenText text={r} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No rejected alternatives.</p>
+              )
+            }
+            editor={linesEditor('rejected, one per line')}
+            toOps={(v, c) => edit('rejected')(trimmed(v), c)}
+            dependents={reach}
+            dubious={dubious}
+          />
+        </details>
         <EditInPlace
           label="references"
           value={doc.references ?? []}
@@ -243,7 +249,10 @@ function DubiousMark({ place, line }: { place: string; line?: string }) {
   );
 }
 
-/** The children of the current place, each selectable as the next current node. */
+/**
+ * The children of the current place, each selectable as the next current node.
+ * @DecisionRef ui:children-as-buttons — each child a button that makes it current.
+ */
 export function Children({ place }: { place: string }) {
   const { view, travel } = useLedger();
   const children = view.places[place]?.children ?? [];
@@ -251,10 +260,10 @@ export function Children({ place }: { place: string }) {
   return (
     <section aria-label="children">
       <h3>Beneath</h3>
-      <ul className="plain">
+      <ul className="child-buttons">
         {children.map((c) => (
           <li key={c}>
-            <button className="link" onClick={() => travel(c)}>
+            <button className="child-button" onClick={() => travel(c)}>
               {labelOf(view, c)}
             </button>
           </li>

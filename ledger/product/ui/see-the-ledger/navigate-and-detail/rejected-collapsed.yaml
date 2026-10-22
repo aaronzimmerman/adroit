@@ -1,0 +1,6 @@
+id: ui:rejected-collapsed
+name: Rejected collapsed
+decision: >-
+  A decision's rejected alternatives are collapsed beneath it by default, showing how many there are
+  and opened on demand.
+context: Rejected should also be hidden until expanded.
