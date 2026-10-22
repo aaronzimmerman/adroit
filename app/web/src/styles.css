@@ -73,12 +73,12 @@ ul.plain { list-style: none; padding: 0; margin: 0; }
 .dependents { display: inline-block; margin-top: 6px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--panel-2); }
 .dependents.heavy { font-size: 14px; font-weight: 600; color: var(--amber); }
 .dubious-box { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 8px; background: #2a2010; }
-.decision-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: var(--panel); }
+.decision-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 16px 18px; margin: 12px 0 16px; background: var(--panel-2); }
 .decision-id { color: var(--accent); }
-.decision-text { margin: 4px 0; font-size: 15px; }
+.decision-text { margin: 2px 0 8px; font-size: 19px; line-height: 1.45; font-weight: 500; color: var(--text); }
+.decision-card .rejected { font-size: 13px; color: var(--muted); }
 .rejected, .questions { margin: 4px 0; padding-left: 18px; }
 .decision-list { margin: 4px 0; padding-left: 18px; }
-.capability-group { margin: 8px 0; padding-left: 8px; border-left: 2px solid var(--line); }
 .group-name { font-weight: 600; }
 .context, .raw { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; white-space: pre-wrap; }
 
@@ -119,3 +119,11 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 
 .field-token { font-family: ui-monospace, monospace; }
 .fields tr.picked { background: var(--panel-2); outline: 1px solid var(--accent); }
+
+.note-group { margin: 6px 0; }
+.note-group > summary { cursor: pointer; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 4px 0; }
+.note-group > summary .muted { text-transform: none; letter-spacing: 0; }
+.note-group[open] > summary { margin-bottom: 4px; }
+.graft-names { color: var(--accent); }
+.nav-row.graft .nav-label { font-style: italic; color: var(--accent); opacity: 0.85; }
+.badge.graft { color: var(--accent); border: 1px dashed var(--accent); background: none; }

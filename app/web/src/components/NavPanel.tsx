@@ -11,6 +11,8 @@ import { useLedger } from '../context.js';
  * walk in this one tree.
  * @DecisionRef ui:up-a-level-down-another — up to the parent, then into any other subtree.
  * @DecisionRef ui:current-kept-in-view — the current row is scrolled into view whenever it changes.
+ * @DecisionRef ui:capabilities-shown-summarized — each capability a node includes sits beneath it,
+ * after its children, marked as grafted.
  */
 export function NavPanel({
   current,
@@ -31,8 +33,34 @@ export function NavPanel({
   const findingsAt = new Map<string, number>();
   for (const f of view.findings) findingsAt.set(f.place, (findingsAt.get(f.place) ?? 0) + 1);
 
+  /** A capability grafted beneath a node: selecting it opens the capability's own tree. */
+  const graftRow = (owner: string, name: string, depth: number) => {
+    const at = `capabilities/${name}`;
+    const root = view.places[at]?.node;
+    return (
+      <li key={`${owner}+${name}`}>
+        <div className="nav-row graft" style={{ paddingLeft: 6 + depth * 14 }}>
+          <span className="twisty" />
+          {/* @DecisionRef ui:open-a-capability — selecting the graft opens the capability. */}
+          <button
+            className="nav-label"
+            aria-label={`capability ${name}, grafted here`}
+            title={root ? root.doc.decision : `no capability named ${name}`}
+            disabled={!root}
+            onClick={() => travel(at)}
+          >
+            ⤷ {name}
+          </button>
+          <span className="badge graft">capability</span>
+        </div>
+      </li>
+    );
+  };
+
   const row = (place: Place, depth: number) => {
     const open = expanded.has(place.path);
+    const grafts = place.node?.doc.includes ?? [];
+    const expandable = place.children.length > 0 || grafts.length > 0;
     const dubious = place.node?.doc.dubious !== undefined;
     const questions = place.node?.doc.questions?.length ?? 0;
     const findings = findingsAt.get(place.path) ?? 0;
@@ -43,7 +71,7 @@ export function NavPanel({
           className={`nav-row ${place.path === current ? 'current' : ''} kind-${place.kind}`}
           style={{ paddingLeft: 6 + depth * 14 }}
         >
-          {place.children.length > 0 ? (
+          {expandable ? (
             <button className="twisty" aria-label={`${open ? 'collapse' : 'expand'} ${place.label}`} onClick={() => onToggle(place.path)}>
               {open ? '▾' : '▸'}
             </button>
@@ -59,8 +87,11 @@ export function NavPanel({
           {questions > 0 && <span className="badge question" title={`${questions} open question(s)`}>?{questions}</span>}
           {place.uncommitted && <span className="badge uncommitted" title="differs from the last commit">uncommitted</span>}
         </div>
-        {open && place.children.length > 0 && (
-          <ul>{place.children.map((c) => view.places[c] && row(view.places[c], depth + 1))}</ul>
+        {open && expandable && (
+          <ul>
+            {place.children.map((c) => view.places[c] && row(view.places[c], depth + 1))}
+            {grafts.map((g) => graftRow(place.path, g, depth + 1))}
+          </ul>
         )}
       </li>
     );

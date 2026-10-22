@@ -1,0 +1,6 @@
+id: ui:decision-text-prominent
+name: Decision text prominent
+decision: >-
+  The node's decision is the most prominent text in the details panel, set larger than everything
+  around it and set apart.
+context: "\"Can we have the decision text more pronounced and highlighted? Maybe larger text.\""

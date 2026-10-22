@@ -1,0 +1,12 @@
+id: ui:notes-collapsed
+name: Notes collapsed
+decision: >-
+  A node's questions and context are collapsed by default in the details panel, each showing that it
+  is there and opened on demand.
+rejected:
+  - >-
+    questions and context shown open beside the decision — they are not as important on this screen,
+    and they crowd the decision being read
+context: >-
+  "Questions, includes, and contexts are all not as important in this screen. We can definitely hide
+  the questions and the contexts by default, but let them be expandable."

@@ -37,40 +37,6 @@ export function PlaceInTree({ node }: { node: NodeView }) {
 }
 
 /**
- * The capabilities this node includes, each grafted beneath it and summarized by its root node's
- * decision.
- * @DecisionRef ui:capabilities-shown-summarized — beneath the includer, by the root's decision.
- */
-export function Grafted({ node }: { node: NodeView }) {
-  const { view, travel } = useLedger();
-  const names = node.doc.includes ?? [];
-  if (names.length === 0) return null;
-  return (
-    <section aria-label="grafted beneath">
-      <h3>Grafted beneath</h3>
-      {names.map((name) => {
-        const at = `capabilities/${name}`;
-        const root = view.places[at]?.node;
-        return (
-          <div key={name} className="capability-group">
-            <div className="row">
-              <strong>{name}</strong>
-              {/* @DecisionRef ui:open-a-capability — open it in the navigation panel. */}
-              {root && (
-                <button onClick={() => travel(at)} aria-label={`open capability ${name}`}>
-                  open {name}
-                </button>
-              )}
-            </div>
-            {root ? <p><TokenText text={root.doc.decision} /></p> : <p className="muted">No capability by this name has a root node.</p>}
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
-/**
  * Every node that includes the current capability.
  * @DecisionRef ui:capability-shows-includers — every node that includes this capability.
  */

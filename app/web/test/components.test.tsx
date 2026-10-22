@@ -75,6 +75,20 @@ describe('the navigation panel', () => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
   });
 
+  // @DecisionRef ui:capabilities-shown-summarized — beneath its includer, after its children, marked.
+  // @DecisionRef ui:open-a-capability — selecting the graft opens the capability.
+  it('shows a capability grafted beneath its includer, after its children, and opens it', () => {
+    wrap(<NavPanel current="product/demo" expanded={new Set(['product', 'product/demo', 'product/demo/parent-rule'])} onToggle={() => {}} />);
+    const graft = screen.getByRole('button', { name: 'capability notify, grafted here' });
+    expect(graft.getAttribute('title')).toBe('The user is told when something happens.');
+    const demoList = screen.getByRole('button', { name: 'Demo' }).closest('li')!.querySelector('ul')!;
+    const rows = [...demoList.children].map((li) => li.querySelector('.nav-label')!.textContent);
+    expect(rows).toEqual(['Parent rule', '⤷ notify']);
+    expect(screen.getAllByRole('button', { name: /grafted here/ })).toHaveLength(1);
+    fireEvent.click(graft);
+    expect(travel).toHaveBeenCalledWith('capabilities/notify');
+  });
+
   it('goes up a level from the current node', () => {
     wrap(<NavPanel current="product/demo/parent-rule" expanded={new Set(['product', 'product/demo'])} onToggle={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /up a level/ }));
@@ -131,22 +145,34 @@ describe('the details panel', () => {
     expect(within(path).getAllByRole('button').map((b) => b.textContent)).toEqual(['Demo', 'Parent rule']);
     expect(within(at).getByText(/Parents rule broadly/)).toBeTruthy();
     expect(within(at).queryByText(/A user can demo things/)).toBeNull();
-    expect(screen.queryByRole('region', { name: 'grafted beneath' })).toBeNull();
+    expect(screen.getByText('No capability grafted beneath.')).toBeTruthy();
     fireEvent.click(within(path).getByRole('button', { name: 'Demo' }));
     expect(travel).toHaveBeenCalledWith('product/demo');
   });
 
-  // @DecisionRef ui:capabilities-shown-summarized — beneath its includer only, by the root's decision.
-  // @DecisionRef ui:open-a-capability — and opened in the navigation panel from there.
-  it('shows a capability grafted beneath its includer only, summarized by its root\'s decision', () => {
+  // @DecisionRef ui:capabilities-shown-summarized — not a field here; only its editor.
+  it('leaves a node\'s grafts out of its fields, editing them beneath', () => {
+    wrap(<DetailsPanel current="product/demo" />);
+    expect(screen.queryByRole('heading', { name: 'Includes' })).toBeNull();
+    const grafted = screen.getByRole('region', { name: 'grafted beneath' });
+    expect(grafted.textContent).toContain('grafted beneath: notify');
+    expect(within(grafted).getByRole('button', { name: 'edit includes' })).toBeTruthy();
+  });
+
+  // @DecisionRef ui:notes-collapsed — closed until opened, each saying it is there.
+  // @DecisionRef ui:decision-text-prominent — the decision stands on its own, set apart.
+  it('collapses questions and context, each saying whether it holds anything', () => {
     wrap(<DetailsPanel current="product/demo/parent-rule" />);
-    expect(screen.queryByRole('region', { name: 'grafted beneath' })).toBeNull();
+    const questions = screen.getByRole('group', { name: 'questions' }) as HTMLDetailsElement;
+    const context = screen.getByRole('group', { name: 'context' }) as HTMLDetailsElement;
+    expect(questions.open).toBe(false);
+    expect(context.open).toBe(false);
+    expect(questions.querySelector('summary')!.textContent).toContain('none');
+    expect(context.querySelector('summary')!.textContent).not.toContain('none');
+    expect(screen.getByText('Parents rule broadly.').closest('.decision-card')).toBeTruthy();
     cleanup();
     wrap(<DetailsPanel current="product/demo" />);
-    const grafted = screen.getByRole('region', { name: 'grafted beneath' });
-    expect(within(grafted).getByText(/The user is told when something happens/)).toBeTruthy();
-    fireEvent.click(within(grafted).getByRole('button', { name: 'open capability notify' }));
-    expect(travel).toHaveBeenCalledWith('capabilities/notify');
+    expect(screen.getByRole('group', { name: 'questions' }).querySelector('summary')!.textContent).toContain('(1)');
   });
 
   it('shows a capability\'s includers', () => {

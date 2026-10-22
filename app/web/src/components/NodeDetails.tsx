@@ -4,18 +4,19 @@ import { labelOf, useLedger } from '../context.js';
 import { ChangeFlow } from './ChangeFlow.jsx';
 import { EditInPlace, linesEditor, textEditor } from './EditInPlace.jsx';
 import { Lens } from './Lens.jsx';
-import { Grafted, IncludedBy, PlaceInTree } from './Scope.jsx';
+import { IncludedBy, PlaceInTree } from './Scope.jsx';
 import { TokenText } from './TokenText.jsx';
 import { Structure } from './Structure.jsx';
 
 const trimmed = (lines: string[]) => lines.map((l) => l.trim()).filter(Boolean);
 
 /**
- * The current node, read and edited in place: its one decision with its rejected alternatives
- * and the views it references, its dubious mark and questions, its includes and context, where it
- * sits, what is nested and grafted beneath it, and its structure.
+ * The current node, read and edited in place: where it sits, its one decision with its rejected
+ * alternatives and the views it references, its dubious mark, its questions and context collapsed,
+ * what is nested and grafted beneath it, and its structure.
  * @DecisionRef ui:details-panel-right — the right panel shows the current node: its decision with
- * its rejected alternatives, its dubious mark and its questions.
+ * its rejected alternatives, and its dubious mark.
+ * @DecisionRef ui:decision-text-prominent — the decision is the largest text here, set apart.
  * @DecisionRef ui:all-but-id-editable — every field edits here; the id is shown, fixed.
  */
 export function NodeDetails({ place, node }: { place: string; node: NodeView }) {
@@ -127,8 +128,13 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
         {lens && <Lens id={doc.id} />}
       </section>
 
-      <section aria-label="questions">
-        <h3>Questions</h3>
+      {/* @DecisionRef ui:notes-collapsed — questions and context are closed until opened, each
+          saying that it is there. */}
+      <details className="note-group" aria-label="questions">
+        <summary>
+          Questions{' '}
+          <span className="muted">{doc.questions?.length ? `(${doc.questions.length})` : '— none'}</span>
+        </summary>
         <EditInPlace
           label="questions"
           value={doc.questions ?? []}
@@ -147,23 +153,12 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           toOps={(qs, c) => edit('questions')(trimmed(qs), c)}
           dubious={dubious}
         />
-      </section>
+      </details>
 
-      <section aria-label="includes">
-        <h3>Includes</h3>
-        <EditInPlace
-          label="includes"
-          value={doc.includes ?? []}
-          render={(v) => (v.length ? <p>{v.join(', ')}</p> : <p className="muted">Includes no capability.</p>)}
-          editor={linesEditor('includes, one per line', 2)}
-          toOps={(v, c) => edit('includes')(trimmed(v), c)}
-          dependents={reach}
-          dubious={dubious}
-        />
-      </section>
-
-      <section aria-label="context">
-        <h3>Context</h3>
+      <details className="note-group" aria-label="context">
+        <summary>
+          Context <span className="muted">{node.contextText ? '' : '— none'}</span>
+        </summary>
         <EditInPlace
           label="context"
           value={node.contextText}
@@ -173,10 +168,30 @@ export function NodeDetails({ place, node }: { place: string; node: NodeView }) 
           dependents={reach}
           dubious={dubious}
         />
-      </section>
+      </details>
 
       <Children place={place} />
-      <Grafted node={node} />
+      {/* @DecisionRef ui:capabilities-shown-summarized — a graft is shown in the navigation panel
+          beneath this node; here it is only edited. */}
+      <section aria-label="grafted beneath">
+        <EditInPlace
+          label="includes"
+          value={doc.includes ?? []}
+          render={(v) =>
+            v.length ? (
+              <p className="muted">
+                grafted beneath: <span className="graft-names">{v.join(', ')}</span>
+              </p>
+            ) : (
+              <p className="muted">No capability grafted beneath.</p>
+            )
+          }
+          editor={linesEditor('includes, one per line', 2)}
+          toOps={(v, c) => edit('includes')(trimmed(v), c)}
+          dependents={reach}
+          dubious={dubious}
+        />
+      </section>
       <IncludedBy node={node} />
       <Structure place={place} />
     </article>

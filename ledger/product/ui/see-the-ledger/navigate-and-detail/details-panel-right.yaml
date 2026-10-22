@@ -2,4 +2,4 @@ id: ui:details-panel-right
 name: Details panel right
 decision: >-
   A details panel on the right shows the current node: its decision with its rejected alternatives,
-  its dubious mark and its questions.
+  and its dubious mark.
