@@ -1,0 +1,10 @@
+id: ui:selected-file-diff
+name: Selected file diff
+decision: >-
+  Selecting a changed file shows its read-only line diff beside the file list, with additions and
+  deletions highlighted.
+rejected:
+  - >-
+    rendering only the resulting decision — the reader needs to see what changed, including text
+    removed from a file that no longer exists
+references: ["view:history-diff"]

@@ -1,0 +1,8 @@
+id: view:history-commit
+decision: One commit in the opened ledger's history.
+schema:
+  fields:
+    hash: string (ui:recent-ledger-commits) — the full commit object name
+    author: string (ui:recent-ledger-commits) — the commit author's name
+    epoch: epoch (eng:one-time-renderer) — commit time in seconds
+    subject: string (ui:recent-ledger-commits) — the commit message's subject

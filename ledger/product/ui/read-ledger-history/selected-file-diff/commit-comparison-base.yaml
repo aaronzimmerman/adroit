@@ -1,0 +1,9 @@
+id: ui:commit-comparison-base
+name: Commit comparison base
+decision: >-
+  A commit's changes are compared with its first parent, or with an empty ledger when it has no
+  parent.
+rejected:
+  - >-
+    comparing with the working ledger — later commits and uncommitted edits would be mixed into the
+    selected commit's changes

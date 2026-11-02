@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { LedgerContext, type Ledger } from './context.js';
 import { DetailsPanel } from './components/DetailsPanel.jsx';
 import { FindingsList } from './components/Findings.jsx';
+import { HistoryPanel } from './components/HistoryPanel.jsx';
 import { NavPanel } from './components/NavPanel.jsx';
 import { OpenLedger } from './components/OpenLedger.jsx';
 import { Search } from './components/Search.jsx';
@@ -20,9 +21,8 @@ const firstPlace = (view: LedgerView): string =>
   view.places.product?.children[0] ?? view.roots.find((r) => view.places[r]?.children.length) ?? view.roots[0] ?? '';
 
 /**
- * The navigation panel on the left, the details panel on the right, and the ledger-wide tools
- * (open, search, findings) above them.
- * @DecisionRef ui:organized-around-hierarchy — the hierarchy is the frame everything sits in.
+ * Hosts the full-ledger and history reading modes, sharing the opened directory.
+ * @DecisionRef ui:switch-reading-modes — retain the full-ledger selection across mode changes.
  * @DecisionRef story:ui — understand and manipulate a ledger.
  */
 export function App() {
@@ -34,6 +34,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [mode, setMode] = useState<'ledger' | 'history'>('ledger');
   const currentRef = useRef('');
 
   const go = useCallback((v: LedgerView, place: string, picked?: string) => {
@@ -105,12 +106,17 @@ export function App() {
         <header className="topbar">
           <span className="brand">adroit</span>
           <span className="muted">{view.corpus}</span>
+          {/* @DecisionRef ui:switch-reading-modes — the current ledger place survives a visit to history. */}
+          <div className="mode-switch" role="group" aria-label="reading mode">
+            <button aria-pressed={mode === 'ledger'} onClick={() => setMode('ledger')}>Ledger</button>
+            <button aria-pressed={mode === 'history'} onClick={() => { setMode('history'); setFindingsOpen(false); }}>History</button>
+          </div>
           <OpenLedger dir={view.dir} onOpened={(v) => show(v, firstPlace(v))} />
           <span className="spacer" />
-          <Search />
+          {mode === 'ledger' && <><Search />
           <button className={`findings-button ${errors ? 'has-errors' : ''}`} onClick={() => setFindingsOpen(!findingsOpen)}>
             findings: {view.findings.length}
-          </button>
+          </button></>}
         </header>
         {notice && (
           <div className="notice" role="status">
@@ -118,8 +124,8 @@ export function App() {
           </div>
         )}
         {!view.repo && <div className="notice muted">This ledger is not inside a git repository: it can be read, and changes cannot land.</div>}
-        {findingsOpen && <FindingsList onClose={() => setFindingsOpen(false)} />}
-        <main className="panels">
+        {mode === 'ledger' && findingsOpen && <FindingsList onClose={() => setFindingsOpen(false)} />}
+        {mode === 'history' ? <HistoryPanel key={`${view.dir}#${version}`} inRepo={!!view.repo} /> : <main className="panels">
           <NavPanel
             current={current}
             expanded={expanded}
@@ -133,7 +139,7 @@ export function App() {
             }
           />
           <DetailsPanel key={`${current}#${field ?? ''}#${version}`} current={current} field={field} />
-        </main>
+        </main>}
       </div>
     </LedgerContext.Provider>
   );

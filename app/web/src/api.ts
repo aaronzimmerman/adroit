@@ -5,6 +5,9 @@ import type {
   ChangePreview,
   ChangeRequest,
   CodeCitation,
+  HistoryDiff,
+  HistoryFiles,
+  HistoryPage,
   LedgerView,
   SearchHit,
 } from '@adroit/shared';
@@ -32,6 +35,10 @@ export const api = {
   preview: (req: ChangeRequest) => post<ChangePreview>('/api/change/preview', req),
   change: (req: ChangeRequest) => post<ChangeOutcome>('/api/change', req),
   lens: (id: string) => call<{ id: string; citations: CodeCitation[] }>(`/api/lens?id=${encodeURIComponent(id)}`),
+  history: (skip = 0, head?: string) =>
+    call<HistoryPage>(`/api/history?${new URLSearchParams({ skip: String(skip), ...(head ? { head } : {}) })}`),
+  historyFiles: (commit: string) => call<HistoryFiles>(`/api/history/files?${new URLSearchParams({ commit })}`),
+  historyDiff: (commit: string, path: string) => call<HistoryDiff>(`/api/history/diff?${new URLSearchParams({ commit, path })}`),
 };
 
 /** A refusal's message, or the generic line for anything else. */

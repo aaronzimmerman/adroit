@@ -198,3 +198,39 @@ export interface CodeCitation {
   /** The file's diff since the decision last changed; empty when it has not moved. */
   diff: string;
 }
+
+/** A commit offered by the opened ledger's history. */
+export interface HistoryCommit {
+  hash: string;
+  author: string;
+  /** Commit time in epoch seconds, rendered with the app's shared time helper. */
+  epoch: number;
+  subject: string;
+}
+
+export interface HistoryPage {
+  /** The history's fixed tip for subsequent pages; null in an unborn repository. */
+  head: string | null;
+  commits: HistoryCommit[];
+  hasMore: boolean;
+}
+
+export interface HistoryFile {
+  /** Ledger-relative path, including files that no longer exist. Moves are delete/add pairs. */
+  path: string;
+  status: 'A' | 'M' | 'D' | 'T';
+}
+
+export interface HistoryFiles {
+  commit: string;
+  /** The first parent; null for the initial commit. */
+  parent: string | null;
+  files: HistoryFile[];
+}
+
+export interface HistoryDiff {
+  commit: string;
+  path: string;
+  /** Git's unified patch, including file headers and any non-text change information. */
+  patch: string;
+}

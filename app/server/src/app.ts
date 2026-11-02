@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { applyChange, previewChange, Refusal } from './change.js';
 import { GitFacts, repoOf } from './gitfacts.js';
+import { LedgerHistory } from './history.js';
 import { openLedger } from './ledger.js';
 import { citationsFor } from './lens.js';
 import { searchLedger } from './search.js';
@@ -49,6 +50,25 @@ export function createApp(opts: AppOptions): Express {
   app.get('/api/search', wrap(async (req, res) => {
     const q = String(req.query.q ?? '');
     res.json({ query: q, hits: searchLedger(await view(), q) });
+  }));
+
+  const history = async () => {
+    const dir = ledgerDir;
+    const repo = await repoOf(dir);
+    if (!repo) throw new Refusal('this ledger is not inside a git repository, so it has no commit history');
+    return new LedgerHistory(new GitFacts(repo), dir);
+  };
+
+  app.get('/api/history', wrap(async (req, res) => {
+    res.json(await (await history()).page(Number(req.query.skip ?? 0), req.query.head === undefined ? undefined : String(req.query.head)));
+  }));
+
+  app.get('/api/history/files', wrap(async (req, res) => {
+    res.json(await (await history()).files(String(req.query.commit ?? '')));
+  }));
+
+  app.get('/api/history/diff', wrap(async (req, res) => {
+    res.json(await (await history()).diff(String(req.query.commit ?? ''), String(req.query.path ?? '')));
   }));
 
   // @DecisionRef ui:change-shows-implications — what a change would make suspect, measured

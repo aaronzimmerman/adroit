@@ -1,0 +1,5 @@
+id: ui:switch-reading-modes
+name: Switch reading modes
+decision: >-
+  A ledger reader can switch between the full ledger and its history while retaining their place in
+  the full ledger.

@@ -1,0 +1,3 @@
+id: ui:read-ledger-history
+name: Read ledger history
+decision: A ledger reader can inspect how the opened ledger changed through its Git history.

@@ -146,3 +146,61 @@ table.fields th, table.fields td { border-bottom: 1px solid var(--line); padding
 .question-text { flex: 1; min-width: 0; }
 .question-row input { flex: 1; }
 .question-row:not(:hover) .edit-button { opacity: 0.4; }
+
+/* @DecisionRef ui:switch-reading-modes — a compact switch beside the opened ledger. */
+.mode-switch { display: inline-flex; flex-shrink: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.mode-switch button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 4px 12px; }
+.mode-switch button[aria-pressed='true'] { color: var(--accent); background: var(--panel-2); box-shadow: inset 0 -2px var(--accent); }
+.mode-switch button:focus-visible, .history-panels button:focus-visible, .history-patch:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* @DecisionRef ui:commit-changed-files — successive columns follow the reader's selection. */
+.history-panels { flex: 1; display: grid; grid-template-columns: minmax(230px, 24%) minmax(210px, 23%) minmax(0, 1fr); min-height: 0; }
+.history-column { min-width: 0; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); }
+.history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 6px; }
+.history-heading h2 { font-size: 17px; }
+.history-heading button { font-size: 12px; }
+.history-caption { font-size: 12px; margin: 0; padding: 0 14px 12px; border-bottom: 1px solid var(--line); }
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-choice { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 12px 14px; }
+.history-choice:hover { background: var(--panel-2); }
+.history-choice[aria-current='true'] { background: var(--panel-2); box-shadow: inset 3px 0 var(--accent); }
+.commit-subject { display: block; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.commit-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--muted); margin-top: 7px; font-size: 12px; }
+.commit-meta code { color: var(--accent); font-size: 11px; }
+.commit-time { display: block; font-size: 11px; margin-top: 2px; }
+.file-choice { display: flex; align-items: baseline; gap: 9px; }
+.file-choice code { overflow-wrap: anywhere; font-size: 12px; }
+.file-status { flex-shrink: 0; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--amber); }
+.status-A { color: var(--accent); }
+.status-D { color: var(--red); }
+.history-message { margin: 0; padding: 16px 14px; }
+.history-more { margin: 14px; }
+.history-empty { padding: 28px 22px; color: var(--muted); }
+.history-detail { min-width: 0; overflow: auto; }
+.history-diff-heading { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.history-diff-heading h2 { min-width: 0; overflow-wrap: anywhere; }
+.history-diff-heading h2 code { font-size: 13px; }
+.history-diff-heading p { margin: 10px 0; }
+.history-diff-heading .row { font-size: 12px; }
+
+/* @DecisionRef ui:selected-file-diff — signs and line numbers accompany the colored changes. */
+.history-patch { margin: 0; padding: 12px 0 32px; overflow: auto; line-height: 1.6; tab-size: 4; }
+.diff-line { display: grid; grid-template-columns: 42px 42px 1fr; width: max-content; min-width: 100%; }
+.diff-number { text-align: right; padding: 0 8px; color: var(--muted); user-select: none; font-size: 11px; border-right: 1px solid var(--line); }
+.diff-text { padding: 0 12px; }
+.diff-add { background: #15372e; color: #adf0d3; }
+.diff-delete { background: #3d2028; color: #ffb3b8; }
+.diff-meta { color: var(--muted); }
+.diff-hunk { background: var(--panel-2); color: var(--violet); margin: 8px 0; }
+
+@media (max-width: 1000px) {
+  .topbar { flex-wrap: wrap; }
+  .history-panels { grid-template-columns: minmax(190px, 25%) minmax(180px, 25%) minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .history-panels { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(160px, 35vh) minmax(240px, 1fr); overflow: auto; }
+  .history-detail { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+  .history-choice { padding: 10px; }
+  .topbar .ledger-dir { max-width: 90vw; }
+  .topbar .open-ledger { min-width: 0; flex-wrap: wrap; }
+}

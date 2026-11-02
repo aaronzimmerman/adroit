@@ -1,0 +1,10 @@
+id: ui:recent-ledger-commits
+name: Recent ledger commits
+decision: >-
+  History offers commits that changed the opened ledger, most recent first, with older commits
+  available on demand.
+rejected:
+  - >-
+    listing every repository commit — commits that changed only code leave no ledger changes to
+    inspect
+references: ["view:history-page", "view:history-commit"]

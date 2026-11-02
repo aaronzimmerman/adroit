@@ -1,0 +1,10 @@
+id: view:history-files
+decision: The ledger files changed by one selected commit.
+schema:
+  fields:
+    commit: string (ui:commit-changed-files) — selected commit's full object name
+    parent: >-
+      string (ui:commit-comparison-base) — first parent's object name, null for the initial commit
+    files: list<ref<view:history-file>> (ui:commit-changed-files) — changed ledger files
+links:
+  consumes: ["view:history-file"]

@@ -1,0 +1,5 @@
+id: ui:commit-changed-files
+name: Commit changed files
+decision: >-
+  Selecting a commit shows the ledger files it added, edited or deleted beside the commit list.
+references: ["view:history-files", "view:history-file"]

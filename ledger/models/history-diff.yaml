@@ -1,0 +1,7 @@
+id: view:history-diff
+decision: The committed line diff for one selected ledger file.
+schema:
+  fields:
+    commit: string (ui:selected-file-diff) — selected commit's full object name
+    path: string (ui:selected-file-diff) — selected ledger-relative path
+    patch: text (ui:selected-file-diff) — unified Git patch including file headers

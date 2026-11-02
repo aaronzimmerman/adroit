@@ -1,0 +1,6 @@
+id: view:history-file
+decision: One ledger file changed by a commit.
+schema:
+  fields:
+    path: string (ui:commit-changed-files) — ledger-relative file path
+    status: enum<A|M|D|T> (ui:commit-changed-files) — added, edited, deleted or changed file type

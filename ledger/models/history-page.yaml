@@ -1,0 +1,9 @@
+id: view:history-page
+decision: One page of commits in the opened ledger's history.
+schema:
+  fields:
+    head: string (ui:recent-ledger-commits) — fixed history tip, null before the first commit
+    commits: list<ref<view:history-commit>> (ui:recent-ledger-commits) — commits in reading order
+    hasMore: bool (ui:recent-ledger-commits) — whether older commits remain
+links:
+  consumes: ["view:history-commit"]
