@@ -243,13 +243,13 @@ test('every node file in the live ledger re-emits byte-for-byte from what it par
     const text = readFileSync(join(LEDGER_DIR, n.rel), 'utf8');
     assert.equal(emit(parse(text)), text, `${n.rel} does not re-emit as written`);
   }
-  for (const rec of ctx.records.filter((r) => r._tree === 'models')) {
+  for (const rec of ctx.records.filter((r) => r._tree === 'views')) {
     const want = Object.fromEntries(Object.entries(rec).filter(([k]) => !k.startsWith('_')));
     assert.deepEqual(parse(emit(want)), want, `${rec.id} did not survive the round trip`);
   }
   // A typed view is written through the codec, so its FILE re-emits byte-for-byte too — the
   // `schema:` block and its folded field strings included.
-  const typed = ctx.records.filter((r) => r._tree === 'models' && r.schema !== undefined);
+  const typed = ctx.records.filter((r) => r._tree === 'views' && r.schema !== undefined);
   for (const rec of typed) {
     const text = readFileSync(rec._file, 'utf8');
     assert.equal(emit(parse(text)), text, `${rec._rel} does not re-emit as written`);

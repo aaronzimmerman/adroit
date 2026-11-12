@@ -72,7 +72,7 @@ const BASE = () => ({
   'product/app/tools/one-tool/self.yaml': node('app:one-tool', 'One tool'),
   'product/app/tools/one-tool/detail.yaml': node('app:detail', 'Detail'),
   'product/app/sibling.yaml': node('app:sibling', 'Sibling', { decision: 'A sibling rule.' }),
-  'models/view.thing.yaml': { id: 'view:thing', decision: 'A thing as it crosses a boundary.', schema: { fields: { id: 'int (app:detail) — the key', at: 'epoch' } } },
+  'views/view.thing.yaml': { id: 'view:thing', decision: 'A thing as it crosses a boundary.', schema: { fields: { id: 'int (app:detail) — the key', at: 'epoch' } } },
 });
 
 /** The files as an in-memory store, through the same classifier and parser the loader uses. */
@@ -373,7 +373,7 @@ test('the referrer walk: a view plus every decision referencing it, explicit or 
     assert.equal(r.status, 0, r.stderr);
     const out = lines(r);
     assert.equal(out[0].id, 'view:thing', 'the view leads');
-    assert.equal(out[0].tree, 'models');
+    assert.equal(out[0].tree, 'views');
     const refs = out.slice(1);
     assert.deepEqual(refs.map((l) => l.id).sort(), ['app:detail', 'app:sibling']);
     assert.ok(refs.every((l) => l.scope_role === 'referrer'), 'every referrer line says so');
@@ -394,7 +394,7 @@ test('dump --maintenance brings back dubious, questions and context — scoped a
       assert.deepEqual(root.context, 'the app root');
     }
     const view = lines(dump(dir, '--maintenance')).find((l) => l.id === 'view:thing');
-    assert.equal(view.tree, 'models');
+    assert.equal(view.tree, 'views');
     assert.deepEqual(Object.keys(view), ['id', 'decision', 'schema', 'tree'], 'a view line is its own content');
   });
 });
@@ -428,7 +428,7 @@ test('nodeLine is the dump\'s line, and leaves notes out unless asked', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Text rules, models, domains, capabilities
+// Text rules, views, domains, capabilities
 // ---------------------------------------------------------------------------
 
 test('decision text names no record id — rejected and context may', () => {
@@ -460,21 +460,21 @@ test('a view\'s field citations resolve — a dangling one fails the check; unci
   assert.deepEqual(sx.edges.map((e) => e.ruling), ['app:detail']);
   assert.deepEqual(sx.unlinked.map((u) => u.field), ['at']);
   assert.deepEqual(viewIndex(s).realizersOf('view:thing'), ['product/app']);
-  const dangling = errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'epoch (app:gone)'; }));
+  const dangling = errorsFor(edit((f) => { f['views/view.thing.yaml'].schema.fields.at = 'epoch (app:gone)'; }));
   assert.deepEqual(rules(dangling), ['shape-citation']);
   assert.match(dangling[0].message, /^schema\.at cites 'app:gone'/);
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'view:sibling'; }))), ['models'],
-    'a view lives in the models directory');
-  const stranger = errorsFor(edit((f) => { f['models/view.thing.yaml'].id = 'app:thing'; }));
-  assert.ok(rules(stranger).includes('models'), 'the models directory holds only view: records');
-  assert.match(stranger.find((e) => e.rule === 'models').message, /holds only view: records/);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['product/app/sibling.yaml'].id = 'view:sibling'; }))), ['views'],
+    'a view lives in the views directory');
+  const stranger = errorsFor(edit((f) => { f['views/view.thing.yaml'].id = 'app:thing'; }));
+  assert.ok(rules(stranger).includes('views'), 'the views directory holds only view: records');
+  assert.match(stranger.find((e) => e.rule === 'views').message, /holds only view: records/);
 });
 
 // --- typed view schemas and decision references --------------------------------
 
 /** BASE plus a second typed view, exercising the whole type vocabulary. */
 const TYPED = () => edit((f) => {
-  f['models/view.widget.yaml'] = {
+  f['views/view.widget.yaml'] = {
     id: 'view:widget', decision: 'A widget as it crosses a boundary.',
     schema: {
       fields: {
@@ -517,26 +517,26 @@ test('a malformed type token is a schema-type fault', () => {
     'ref<thing>', 'ref<model:thing', 'ref<view:gone> — names no record', 'ref<app:detail>', 'derived', 'derived<blob>',
     'derived<ref<view:gone>>', 'string(app:detail)', '', 'decimal', 'float', 'list<>', 'list<varchar>', 'list',
     'map<string>', 'map<bool,int>', 'map<string,blob>', 'map<string,ref<view:gone>>']) {
-    const errors = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.fields.notes = bad; }));
+    const errors = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['views/view.widget.yaml'].schema.fields.notes = bad; }));
     assert.deepEqual(rules(errors), ['schema-type'], JSON.stringify(bad));
     assert.match(errors[0].message, /^schema\.notes: /);
   }
 });
 
 test('a typed schema holds fields only — never tables or pending inside it, never empty', () => {
-  const pending = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.pending = { later: 'not built' }; }));
+  const pending = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['views/view.widget.yaml'].schema.pending = { later: 'not built' }; }));
   assert.deepEqual(rules(pending), ['schema-type']);
   assert.match(pending[0].message, /states current truth only/);
-  const tables = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.tables = ['widget']; }));
+  const tables = errorsFor(edit((f) => { Object.assign(f, TYPED()); f['views/view.widget.yaml'].schema.tables = ['widget']; }));
   assert.deepEqual(rules(tables), ['schema-type']);
   assert.match(tables[0].message, /lists no tables/);
-  assert.deepEqual(rules(errorsFor(edit((f) => { Object.assign(f, TYPED()); f['models/view.widget.yaml'].schema.fields = {}; }))), ['schema-type']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { Object.assign(f, TYPED()); f['views/view.widget.yaml'].schema.fields = {}; }))), ['schema-type']);
 });
 
 // --- the retired model layer ----------------------------------------------------------
 
-test('a model: id is retired — in the models directory or in a node, it fails naming what replaced it', () => {
-  const inModels = errorsFor(edit((f) => { f['models/model.thing.yaml'] = { id: 'model:thing', decision: 'A thing.', schema: { fields: { id: 'int' } } }; }));
+test('a model: id is retired — in the views directory or in a node, it fails naming what replaced it', () => {
+  const inModels = errorsFor(edit((f) => { f['views/model.thing.yaml'] = { id: 'model:thing', decision: 'A thing.', schema: { fields: { id: 'int' } } }; }));
   assert.deepEqual(rules(inModels), ['retired-kind']);
   assert.equal(inModels[0].id, 'model:thing');
   assert.match(inModels[0].message, /^'model:' is retired — models were retired for views .* storage lives in the code, in its migrations and models/);
@@ -553,7 +553,7 @@ test('shape:, tables: and pending: on a view are retired keys, each saying where
     ['tables', ['thing'], /storage is memorialized by the code, in its migrations and models/],
     ['pending', { later: 'not built' }, /a view states current truth only/],
   ]) {
-    const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'][key] = value; }));
+    const errors = errorsFor(edit((f) => { f['views/view.thing.yaml'][key] = value; }));
     assert.deepEqual(rules(errors), ['retired-key'], key);
     assert.equal(errors[0].id, 'view:thing');
     assert.match(errors[0].message, new RegExp(`^'${key}' is retired — `), key);
@@ -562,29 +562,29 @@ test('shape:, tables: and pending: on a view are retired keys, each saying where
 });
 
 test('a view needs a typed schema, holds only its own keys, and consumes only views', () => {
-  const bare = errorsFor(edit((f) => { delete f['models/view.thing.yaml'].schema; }));
+  const bare = errorsFor(edit((f) => { delete f['views/view.thing.yaml'].schema; }));
   assert.deepEqual(rules(bare), ['schema-type']);
   assert.match(bare[0].message, /a view carries a typed schema:/);
-  const unknown = errorsFor(edit((f) => { f['models/view.thing.yaml'].audience = 'everyone'; }));
+  const unknown = errorsFor(edit((f) => { f['views/view.thing.yaml'].audience = 'everyone'; }));
   assert.deepEqual(rules(unknown), ['unknown-key']);
   assert.match(unknown[0].message, new RegExp(`a view holds only ${VIEW_KEYS.join(', ')}`));
-  assert.deepEqual(rules(errorsFor(edit((f) => { f['models/view.thing.yaml'].links = { owns: ['thing'] }; }))), ['unknown-key']);
+  assert.deepEqual(rules(errorsFor(edit((f) => { f['views/view.thing.yaml'].links = { owns: ['thing'] }; }))), ['unknown-key']);
   assert.deepEqual(errorsFor(edit((f) => {
     Object.assign(f, TYPED());
-    f['models/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
+    f['views/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
   })), [], 'consuming a view and grounding in a principle are both fine');
   for (const target of ['model:thing', 'thing_table', 'view:gone', 'app:detail']) {
-    const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'].links = { consumes: [target] }; }));
+    const errors = errorsFor(edit((f) => { f['views/view.thing.yaml'].links = { consumes: [target] }; }));
     assert.deepEqual(rules(errors), ['dangling'], target);
     assert.match(errors[0].message, new RegExp(`consumes '${target}', which is no view record — a view consumes other views`), target);
   }
 });
 
 test('ref<…> takes view: ids only — a model: ref says the kind is retired', () => {
-  const errors = errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'ref<model:thing> — the old pointer'; }));
+  const errors = errorsFor(edit((f) => { f['views/view.thing.yaml'].schema.fields.at = 'ref<model:thing> — the old pointer'; }));
   assert.deepEqual(rules(errors), ['schema-type']);
   assert.match(errors[0].message, /^schema\.at: ref<…> names 'model:thing' — models were retired for views/);
-  assert.match(errorsFor(edit((f) => { f['models/view.thing.yaml'].schema.fields.at = 'list<ref<app:detail>>'; }))[0].message,
+  assert.match(errorsFor(edit((f) => { f['views/view.thing.yaml'].schema.fields.at = 'list<ref<app:detail>>'; }))[0].message,
     /ref<…> takes one view: id/);
 });
 
@@ -699,7 +699,7 @@ test('--check reports views and references in its summary, and a bad type token 
     const s = dump(dir, '--scope', 'app:sibling');
     assert.deepEqual(lines(s).find((l) => l.node === 'product/app/sibling.yaml').references, ['view:widget']);
   });
-  files['models/view.widget.yaml'].schema.fields.notes = 'blob';
+  files['views/view.widget.yaml'].schema.fields.notes = 'blob';
   onDisk(files, (dir) => {
     const r = check(dir);
     assert.equal(r.status, 1);
@@ -726,7 +726,7 @@ test('every capability has a root node — its decision is the tree\'s purpose',
 });
 
 test('a contract.yaml anywhere in the store is a retired file — a hard error', () => {
-  for (const rel of [`capabilities/capc/${RETIRED_CONTRACT}`, `product/app/${RETIRED_CONTRACT}`, `models/${RETIRED_CONTRACT}`]) {
+  for (const rel of [`capabilities/capc/${RETIRED_CONTRACT}`, `product/app/${RETIRED_CONTRACT}`, `views/${RETIRED_CONTRACT}`]) {
     const errors = errorsFor(edit((f) => { f[rel] = { capability: 'capc', purpose: 'x' }; }));
     assert.deepEqual(errors.map((e) => [e.id, e.rule]), [[rel, 'retired-file']], rel);
     assert.match(errors[0].message, /retired — a capability's root node states what an includer takes on/);
@@ -762,6 +762,14 @@ test('a directory beside the roots is an error, and a reappearing interactions/ 
     assert.equal(r.status, 1);
     assert.match(r.stderr, /adroit\/ \[root\] is not a ledger root/);
     assert.match(r.stderr, /interactions\/ \[root\].*machine-local telemetry/);
+  });
+});
+
+test('a reappearing models/ root says it was renamed views/', () => {
+  onDisk({ ...BASE(), 'models/view.old.yaml': { id: 'view:old', decision: 'An old view.', schema: { fields: { id: 'int' } } } }, (dir) => {
+    const r = check(dir);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /models\/ \[root\] is not a ledger root.*renamed — git mv models views/);
   });
 });
 
@@ -941,7 +949,7 @@ test('compactTextChange quotes only what moved', () => {
 
 test('the hierarchy is the filesystem: nodes nest under their parent node, groups per tree', () => {
   const t = treeIndex(storeOf(BASE()));
-  assert.deepEqual(t.roots.map((r) => r.key), ['product', 'capabilities', 'engineering', 'models']);
+  assert.deepEqual(t.roots.map((r) => r.key), ['product', 'capabilities', 'engineering', 'views']);
   const app = t.roots[0].children.find((g) => g.tree === 'product/app');
   assert.equal(app.children.length, 1, 'the app root node holds the app');
   const root = app.children[0];
@@ -1028,7 +1036,7 @@ test('the server answers every endpoint the explorer reads, against the live sto
     assert.ok(c.counts.nodes > 0 && c.counts.decisions === c.counts.nodes, 'one decision per node file');
 
     const tree = await get('/api/tree');
-    const ROOTS = ['product', 'capabilities', 'engineering', 'models'];
+    const ROOTS = ['product', 'capabilities', 'engineering', 'views'];
     assert.deepEqual(tree.roots.map((r) => r.key), ROOTS.filter((r) => existsSync(join(LEDGER, r))));
     const app = tree.roots[0].children[0];
     assert.equal(app.children.length, 1, 'an app tree hangs off its root node');
@@ -1082,7 +1090,7 @@ test('a view declares its derivations in its schema fields; the statement conven
 test('the ERD draws each view with its typed fields, and the ref and consumes edges between views', () => {
   const s = storeOf(edit((f) => {
     Object.assign(f, TYPED());
-    f['models/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
+    f['views/view.widget.yaml'].links = { consumes: ['view:thing'], grounds: ['principle:fixture-principle'] };
   }));
   const erd = erdData(s);
   assert.deepEqual(Object.keys(erd), ['entities', 'edges'], 'no schema, no tables, no unclaimed list');
@@ -1106,7 +1114,7 @@ test('a path names its tree, and a tree names its short name', () => {
   assert.equal(treeOfPath('engineering/explicit-utc-clock.yaml'), 'engineering');
   assert.equal(cloudOfTree('capabilities/email'), 'email');
   assert.equal(cloudOfTree('product/shop'), 'shop');
-  assert.equal(cloudOfTree('models'), 'models');
+  assert.equal(cloudOfTree('views'), 'views');
   assert.equal(SELF, 'self.yaml');
   assert.ok(existsSync(join(LEDGER, 'engineering')), 'the live store really is laid out this way');
 });

@@ -4,7 +4,7 @@
 //
 //   engineering/           read in full by every piece of work
 //   capabilities/<name>/   self-contained trees, each rooted at a `self.yaml` stating what an includer takes on
-//   models/                the typed views — the DTOs that cross section and trust boundaries
+//   views/                the typed views — the DTOs that cross section and trust boundaries
 //   product/<app>/         one tree per app, its root node at `self.yaml`
 //
 // THE NODE FORMAT — ONE DECISION PER FILE (user-ruled 2026-10-14). Every decision file under
@@ -22,7 +22,7 @@
 // several decisions so `--diff` can compare against refs that predate one-decision-per-file. Such
 // a file FAILS the check in the working tree: its retired keys are errors there.
 //
-// `models/` keeps its own format: one VIEW record per file, each carrying a TYPED `schema:` block —
+// `views/` keeps its own format: one VIEW record per file, each carrying a TYPED `schema:` block —
 // the DTO contract that crosses boundaries, its field types a closed vocabulary the check validates
 // (see parseSchemaField), its field citations naming decision ids. The legacy `model:` records and
 // their `shape:` / `tables:` / `pending:` blocks are retired (user-directed 2026-10-13): storage is
@@ -67,12 +67,14 @@ export const SELF = 'self.yaml';
 /** The retired capability interface file (user-ruled 2026-10-12): read only to be refused. */
 export const RETIRED_CONTRACT = 'contract.yaml';
 /** The roots. `capabilities/` and `product/` hold one tree per name; the rest are one tree each. */
-export const TREE_ROOTS = ['capabilities', 'engineering', 'models', 'product'];
+export const TREE_ROOTS = ['capabilities', 'engineering', 'views', 'product'];
 /** The roots whose files are NODES. */
 export const NODE_ROOTS = ['capabilities', 'engineering', 'product'];
 /** The directory the interaction events used to live in, named so the stray-root error can say
  *  where they went instead of only that the directory is wrong. */
 export const RETIRED_INTERACTIONS_DIR = 'interactions';
+/** The directory the views used to live in, named so the stray-root error can say the move. */
+export const RETIRED_MODELS_DIR = 'models';
 
 /** A node's keys, in the order a file writes them. */
 export const NODE_KEYS = ['id', 'name', 'decision', 'rejected', 'references', 'includes', 'dubious', 'questions', 'context'];
@@ -236,13 +238,13 @@ export function legacyNode(raw) {
 // ---------------------------------------------------------------------------
 
 /** A tree's colour. Small fixed palette, assigned by position in the sorted name list. */
-export const TREE_ACCENT = { engineering: '#A8841C', models: '#7C5CD6' };
+export const TREE_ACCENT = { engineering: '#A8841C', views: '#7C5CD6' };
 const CAPABILITY_ACCENTS = ['#8B8FA3', '#B45309', '#0D9488', '#9333EA', '#059669',
   '#BE365E', '#0284C7', '#64748B', '#C2410C', '#4F46E5'];
 const PRODUCT_ACCENTS = ['#7C5CD6', '#B45309', '#0284C7', '#0D9488', '#64748B'];
 const TREE_PURPOSE = {
   engineering: 'How the project is built — read in full by every piece of work.',
-  models: 'The typed views — the DTO contracts that cross section and trust boundaries.',
+  views: 'The typed views — the DTO contracts that cross section and trust boundaries.',
 };
 
 /** A capability's root node's path — the node whose decisions state what an includer takes on. */
@@ -312,7 +314,7 @@ export function buildStore(entries) {
     else if (entry.kind === 'view') {
       const raw = parse(entry);
       if (raw === UNREADABLE) continue;
-      views.push({ ...(isMap(raw) ? raw : {}), _file: entry.path, _rel: entry.rel, _tree: 'models' });
+      views.push({ ...(isMap(raw) ? raw : {}), _file: entry.path, _rel: entry.rel, _tree: 'views' });
     } else if (entry.kind === 'retired') {
       retiredFiles.push(entry.rel);
     } else if (entry.kind === 'domains') {
@@ -374,7 +376,7 @@ export function entryKind(relPath, dir = 'ledger') {
   if (rel === DOMAINS_FILE) return 'domains';
   const parts = rel.split('/');
   if (parts[parts.length - 1] === RETIRED_CONTRACT) return 'retired';
-  if (parts[0] === 'models') return parts.length === 2 ? 'view' : null;
+  if (parts[0] === 'views') return parts.length === 2 ? 'view' : null;
   return NODE_ROOTS.includes(parts[0]) ? 'node' : null;
 }
 
@@ -566,7 +568,7 @@ export function shapeIndex({ records = [], byId = new Map() } = {}) {
   };
   const edges = [], unlinked = [], dangling = [];
   for (const rec of records) {
-    const fields = rec._tree === 'models' && isMap(rec.schema?.fields) ? rec.schema.fields : null;
+    const fields = rec._tree === 'views' && isMap(rec.schema?.fields) ? rec.schema.fields : null;
     if (!fields) continue;
     for (const [field, raw] of Object.entries(fields)) {
       if (typeof raw !== 'string') continue;
@@ -579,7 +581,7 @@ export function shapeIndex({ records = [], byId = new Map() } = {}) {
 }
 
 /** THE TYPED SCHEMA (user-directed 2026-10-13: the ledger's typed data vocabulary is VIEWS ONLY —
- *  the DTOs that move through the system, never table schemas). Every record in models/ is a view
+ *  the DTOs that move through the system, never table schemas). Every record in views/ is a view
  *  carrying `schema:`; it holds `fields` only — no `tables` (storage lives in the code)
  *  and no `pending` (a view states current truth; ruled-but-unbuilt shapes live in the decisions
  *  that reference it). A field reads
@@ -667,7 +669,7 @@ export function schemaFindings(rec, byId = new Map()) {
     const f = parseSchemaField(raw);
     if (f.error) { out.push({ field, message: f.error }); continue; }
     for (const r of f.refs) {
-      if (!(byId.get(r)?._tree === 'models')) out.push({ field, message: `${f.type} names '${r}', which is no view record` });
+      if (!(byId.get(r)?._tree === 'views')) out.push({ field, message: `${f.type} names '${r}', which is no view record` });
     }
   }
   return out;
@@ -683,11 +685,11 @@ export const schemaFieldsOf = (rec) => (isMap(rec?.schema?.fields) ? Object.entr
 /** The view layer's wiring: the views, and which decision trees each REALIZES — read off its field
  *  citations (view → decision; a decision reaches a view only through its references). */
 export function viewIndex({ records = [], byId = new Map() } = {}) {
-  const views = records.filter((r) => isView(r.id) && r._tree === 'models');
+  const views = records.filter((r) => isView(r.id) && r._tree === 'views');
   const refs = [], seen = new Set();
   for (const e of shapeIndex({ records: views, byId }).edges) {
     const from = byId.get(e.ruling)?._tree;
-    if (!from || from === 'models') continue;
+    if (!from || from === 'views') continue;
     const key = `${from} ${e.model} ${e.ruling}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -760,7 +762,7 @@ export function nodeIndex(store) {
 // ---------------------------------------------------------------------------
 
 /** Every view: id — or retired model: id — a node names in its decision (text and rejected) or
- *  its context. Decision TEXT never points at the models directory: the
+ *  its context. Decision TEXT never points at the views directory: the
  *  channels are a `{slug.field}` token and the `references:` key. `dubious` and `questions` are
  *  maintenance notes and never a check fault. */
 export function modelIdsInText(value) {
@@ -833,7 +835,7 @@ export function tokenFindings(rec, byId = new Map()) {
     for (const t of fieldTokens(text)) {
       if (!t.slug) { out.push({ where, token: t.raw, message: `'${t.raw}' is not a field token — write {<view-slug>.<field>}` }); continue; }
       const view = byId.get(t.view);
-      const fields = view?._tree === 'models' && isMap(view.schema?.fields) ? view.schema.fields : null;
+      const fields = view?._tree === 'views' && isMap(view.schema?.fields) ? view.schema.fields : null;
       if (!fields) out.push({ where, token: t.raw, message: `'${t.raw}' names ${t.view}, which is no typed view` });
       else if (!Object.hasOwn(fields, t.field)) {
         out.push({ where, token: t.raw, message: `'${t.raw}': ${t.view} has no field '${t.field}' — its fields are ${Object.keys(fields).join(', ')}` });
@@ -943,7 +945,9 @@ export function validate(store) {
       `adroit's own corpus lives upstream` +
       (name === RETIRED_INTERACTIONS_DIR
         ? `; interaction events are machine-local telemetry, appended to ${interactionLogPath('<corpus>')} (ADROIT.md, The interactions log)`
-        : ''));
+        : name === RETIRED_MODELS_DIR
+          ? `; the models root was renamed — git mv models views (ADROIT.md, Views)`
+          : ''));
   }
   for (const u of unreadable) bad(u.rel, 'unreadable', `could not be parsed — ${u.message}`);
 
@@ -988,7 +992,7 @@ export function validate(store) {
         if (new Set(raw.references).size !== raw.references.length) bad(where, 'references', 'references names a record twice');
         for (const r of raw.references) {
           if (retiredKindOf(r)) bad(where, 'references', `'${r}' — ${RETIRED_KINDS[retiredKindOf(r)]}; reference the view that carries it`);
-          else if (!(isView(r) && byId.get(r)?._tree === 'models')) bad(where, 'references', `'${r}' resolves to no view record`);
+          else if (!(isView(r) && byId.get(r)?._tree === 'views')) bad(where, 'references', `'${r}' resolves to no view record`);
         }
       }
     }
@@ -1029,14 +1033,14 @@ export function validate(store) {
     if (ns && capabilities.has(ns) && rec._tree !== `capabilities/${ns}`) {
       bad(rec.id, 'namespace', `is namespaced to the '${ns}' capability but lives in ${rec._tree}`);
     }
-    if (isView(rec.id) !== (rec._tree === 'models')) {
-      bad(rec.id, 'models', isView(rec.id) ? `a view lives in the models directory, not ${rec._tree}`
-        : 'the models directory holds only view: records');
+    if (isView(rec.id) !== (rec._tree === 'views')) {
+      bad(rec.id, 'views', isView(rec.id) ? `a view lives in the views directory, not ${rec._tree}`
+        : 'the views directory holds only view: records');
     }
   }
 
-  // --- the models directory: one typed view per file -------------------------------
-  for (const rec of records.filter((r) => r._tree === 'models')) {
+  // --- the views directory: one typed view per file -------------------------------
+  for (const rec of records.filter((r) => r._tree === 'views')) {
     const at = rec.id ?? rec._rel;
     for (const k of Object.keys(rec).filter((x) => !x.startsWith('_'))) {
       if (VIEW_KEYS.includes(k)) continue;
@@ -1054,7 +1058,7 @@ export function validate(store) {
       }
     }
     for (const [type, t] of viewLinks(rec)) {
-      if (type === 'consumes' && !(isView(t) && byId.get(t)?._tree === 'models')) {
+      if (type === 'consumes' && !(isView(t) && byId.get(t)?._tree === 'views')) {
         bad(at, 'dangling', `consumes '${t}', which is no view record — a view consumes other views; ` +
           `storage lives in the code, in its migrations and models`);
       } else if (type === 'grounds' && !byId.has(t) && !isPrinciple(t)) {
@@ -1062,7 +1066,7 @@ export function validate(store) {
       }
     }
   }
-  for (const rec of records.filter((r) => r._tree === 'models')) {
+  for (const rec of records.filter((r) => r._tree === 'views')) {
     for (const f of schemaFindings(rec, byId)) bad(rec.id ?? rec._rel, 'schema-type', `schema.${f.field}: ${f.message}`);
   }
   for (const d of shapeIndex(store).dangling) {
@@ -1124,7 +1128,7 @@ export function storeCounts(store) {
     includes: store.nodes.reduce((n, x) => n + x.includes.length, 0),
     dubious: store.nodes.filter((x) => x.dubious !== undefined).length,
     questions: store.nodes.reduce((n, x) => n + (Array.isArray(x.questions) ? x.questions.length : 0), 0),
-    views: store.records.filter((r) => r._tree === 'models' && isView(r.id)).length,
+    views: store.records.filter((r) => r._tree === 'views' && isView(r.id)).length,
     references: decisions.reduce((n, r) => n + effectiveReferences(r).length, 0),
   };
 }
@@ -1230,7 +1234,7 @@ export function scopedRead(store, targets, { subtree = false } = {}) {
  *  An id that resolves to no view record throws. */
 export function referrersOf(store, viewId) {
   const rec = store.byId.get(viewId);
-  if (!isView(viewId) || rec?._tree !== 'models') throw new Error(`'${viewId}' resolves to no view record`);
+  if (!isView(viewId) || rec?._tree !== 'views') throw new Error(`'${viewId}' resolves to no view record`);
   const nodes = store.nodes.filter((n) => effectiveReferences(store.byId.get(n.id)).includes(viewId));
   return { view: rec, nodes };
 }
@@ -1262,7 +1266,7 @@ export function viewLine(rec, { maintenance = false } = {}) {
     if (k.startsWith('_') || (k === 'context' && !maintenance)) continue;
     out[k] = v;
   }
-  return { ...out, tree: 'models' };
+  return { ...out, tree: 'views' };
 }
 
 // ---------------------------------------------------------------------------
@@ -1486,13 +1490,13 @@ export function resolveUiAsset(urlPath, { dir = UI_DIR } = {}) {
 }
 
 /** Reading order for the roots in the explorer. */
-export const ROOT_ORDER = ['product', 'capabilities', 'engineering', 'models'];
+export const ROOT_ORDER = ['product', 'capabilities', 'engineering', 'views'];
 
 /** The opening words of a node's decisions — what a row shows beside the name (display only). */
 export const gistOf = (store, n) => firstLine(store.byId.get(n.ids[0])?.decision ?? '');
 
 /** THE TREE, as the filesystem has it: the roots, one group per capability and per app, every node
- *  nested under its parent node. Views sit flat under the models root. */
+ *  nested under its parent node. Views sit flat under the views root. */
 export function treeIndex(store) {
   const rows = new Map(store.nodes.map((n) => [n.rel, {
     kind: 'node', key: n.rel, name: n.name ?? n.rel, tree: n.tree, id: n.id,
@@ -1502,8 +1506,8 @@ export function treeIndex(store) {
   }]));
   const tops = [];
   for (const n of store.nodes) (n.parent && rows.get(n.parent) ? rows.get(n.parent).children : tops).push(rows.get(n.rel));
-  for (const m of store.records.filter((r) => r._tree === 'models')) {
-    tops.push({ kind: 'view', key: m.id, name: m.id, tree: 'models', id: m.id, gist: firstLine(m.decision ?? ''),
+  for (const m of store.records.filter((r) => r._tree === 'views')) {
+    tops.push({ kind: 'view', key: m.id, name: m.id, tree: 'views', id: m.id, gist: firstLine(m.decision ?? ''),
       includes: [], dubious: false, questions: 0, children: [], count: 1 });
   }
   const settle = (r) => {
@@ -1541,7 +1545,7 @@ export function nodeDetail(store, key) {
   if (!n) {
     const m = store.byId.get(key);
     if (!m) return null;
-    return { view: true, key: m.id, id: m.id, name: m.id, tree: 'models', file: m._file,
+    return { view: true, key: m.id, id: m.id, name: m.id, tree: 'views', file: m._file,
       decision: m.decision, rejected: Array.isArray(m.rejected) ? m.rejected : [],
       interactions: ix.byDecision.get(m.id) ?? [],
       fields: schemaFieldsOf(m).map((f) => `${f.name}: ${f.type}`),

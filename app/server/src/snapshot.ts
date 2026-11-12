@@ -154,7 +154,7 @@ export async function buildView(opened: Opened, git: GitFacts | null): Promise<L
   }
 
   const cites = fieldCites(store);
-  for (const rec of store.records.filter((r) => r._tree === 'models' && !r._node)) {
+  for (const rec of store.records.filter((r) => r._tree === 'views' && !r._node)) {
     const place = places[rec._rel];
     if (place) places[rec._rel] = { ...place, label: typeof rec.id === 'string' ? rec.id : place.label, view: viewRecordOf(rec, cites) };
   }

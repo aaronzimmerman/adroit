@@ -3,6 +3,6 @@ name: Ledger UI
 decision: A user can understand and manipulate an adroit ledger.
 context: >-
   The UI is built as a test drive of the methodology on itself: product decisions first, refined
-  until functionally coherent, then capabilities, models, and engineering decisions, then code
+  until functionally coherent, then capabilities, views, and engineering decisions, then code
   generated in compliance. UX change thereafter works by finding the missing decision, never by
   specifying a screen (eng:stories-not-interfaces).

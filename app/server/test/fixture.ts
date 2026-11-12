@@ -54,7 +54,7 @@ export const FIXTURE: Record<string, unknown> = {
   'product/demo/parent-rule/online-only/self.yaml': n('app:online-only', 'Online only', 'This corner works online only.'),
   'product/demo/parent-rule/online-only/deep-leaf.yaml': n('app:deep-leaf', 'Deep leaf', 'Deep leaves live here.'),
   'product/demo/sibling.yaml': n('app:sibling', 'Sibling', 'A widget shows its {widget.size}.', { references: ['view:part'] }),
-  'models/widget.yaml': {
+  'views/widget.yaml': {
     id: 'view:widget',
     decision: 'One widget, as the demo shows it.',
     schema: {
@@ -66,7 +66,7 @@ export const FIXTURE: Record<string, unknown> = {
     },
     links: { consumes: ['view:part'] },
   },
-  'models/part.yaml': {
+  'views/part.yaml': {
     id: 'view:part',
     decision: 'One part of a widget.',
     schema: { fields: { label: 'string (app:sibling, app:child-rule) — what the part is called' } },

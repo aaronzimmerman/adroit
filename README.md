@@ -8,13 +8,18 @@ Adroit is a framework towards formalizing that decision making process.
 
 Adroit is a product ledger — a lightweight methodology of structuring changes in an app so as to not truncate past decisions by the ones we are making right now. We track those decisions.
 
+## Intened use
+
+When working with a code base, the ledger becomes the primary interface between humans and agents. We give less scrutiny to the code itself, instead scrutinizing the decisions and considering alternatives.
+
+
 ## The Ledger
 
 The ledger contains 4 roots:
 
 - product
 - engineering
-- models
+- views
 - capabilities
 
 ## Product Ledger
@@ -36,9 +41,9 @@ This structure continues as many levels of "how" refinements are useful. As nuan
 
 Engineering is a similar hierarchy to product, but its decisions apply to EVERY node. A product hierarchy contains decisions that only refer upwards to their parent. Engineering decisions are those that guide the code base as a whole — tech stack, code style, performance requirements, etc.
 
-## Models
+## Views
 
-Models are the links between multiple product decision leaves. They are DTOs — not the data at rest — but the data as it is USED by users. Models are given their explicit fields and track links to the decisions that rely on them. This is so understanding the implications of changing a view can be done definitively. Every decision that references the view would likely need to be revisited or at least checked for any conflicts before changing a model.
+Views are the links between multiple product decision leaves. They are DTOs — not the data at rest — but the data as it is USED by users. Views are given their explicit fields and track links to the decisions that rely on them. This is so understanding the implications of changing a view can be done definitively. Every decision that references the view would likely need to be revisited or at least checked for any conflicts before changing a view.
 
 ## Capabilities
 

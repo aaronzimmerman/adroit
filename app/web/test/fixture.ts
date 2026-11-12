@@ -31,11 +31,11 @@ const root = (path: string, children: string[]): Place => ({ path, kind: 'root',
 
 export function makeView(): LedgerView {
   const places: Record<string, Place> = {
-    '': { path: '', kind: 'root', label: 'ledger', parent: null, children: ['product', 'capabilities', 'engineering', 'models'], uncommitted: false },
+    '': { path: '', kind: 'root', label: 'ledger', parent: null, children: ['product', 'capabilities', 'engineering', 'views'], uncommitted: false },
     product: root('product', ['product/demo']),
     capabilities: root('capabilities', ['capabilities/notify']),
     engineering: root('engineering', []),
-    models: root('models', ['models/widget.yaml']),
+    views: root('views', ['views/widget.yaml']),
     'product/demo': node(
       'product/demo',
       'product',
@@ -95,11 +95,11 @@ export function makeView(): LedgerView {
       { id: 'notify:tell-the-user', name: 'Notify', decision: 'The user is told when something happens.' },
       { capability: 'notify', includers: ['product/demo'], dependents: 4 },
     ),
-    'models/widget.yaml': {
-      path: 'models/widget.yaml',
+    'views/widget.yaml': {
+      path: 'views/widget.yaml',
       kind: 'view',
       label: 'view:widget',
-      parent: 'models',
+      parent: 'views',
       children: [],
       uncommitted: false,
       view: {
@@ -131,7 +131,7 @@ export function makeView(): LedgerView {
       'app:online-only': 'product/demo/parent-rule/online-only',
       'app:deep-leaf': 'product/demo/parent-rule/online-only/deep-leaf.yaml',
       'notify:tell-the-user': 'capabilities/notify',
-      'view:widget': 'models/widget.yaml',
+      'view:widget': 'views/widget.yaml',
     },
   };
 }

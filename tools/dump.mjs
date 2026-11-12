@@ -122,7 +122,7 @@ if (scope) {
 } else {
   const tier = (n) => (n.tree === 'engineering' ? (n.ids.some(isPrinciple) ? 0 : 1) : n.tree.startsWith('capabilities/') ? 2 : 3);
   for (const n of [...nodes].sort((a, b) => tier(a) - tier(b))) write(nodeLine(ctx, n, { maintenance: MAINTENANCE }));
-  for (const m of records.filter((r) => r._tree === 'models')) write(viewLine(m, { maintenance: MAINTENANCE }));
+  for (const m of records.filter((r) => r._tree === 'views')) write(viewLine(m, { maintenance: MAINTENANCE }));
 }
 if (WITH_INTERACTIONS) for (const e of [...interactions].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))) write(e);
 
@@ -136,5 +136,5 @@ if (scope) {
 } else {
   process.stderr.write(
     `${decisionCount(nodes)} decisions · ` +
-    `${records.filter((r) => r._tree === 'models').length} views${tail}\n`);
+    `${records.filter((r) => r._tree === 'views').length} views${tail}\n`);
 }

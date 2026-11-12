@@ -48,7 +48,7 @@ const wrap = (ui: ReactNode) => render(<LedgerContext.Provider value={{ view, tr
 describe('the navigation panel', () => {
   it('shows the hierarchy from the roots down, and selecting a child makes it current', () => {
     wrap(<NavPanel current="product/demo" expanded={new Set(['product', 'product/demo'])} onToggle={() => {}} />);
-    for (const r of ['product', 'capabilities', 'engineering', 'models']) expect(screen.getByRole('button', { name: r })).toBeTruthy();
+    for (const r of ['product', 'capabilities', 'engineering', 'views']) expect(screen.getByRole('button', { name: r })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Parent rule' }));
     expect(travel).toHaveBeenCalledWith('product/demo/parent-rule');
   });
@@ -62,12 +62,12 @@ describe('the navigation panel', () => {
       scrolled.push(this.textContent ?? '');
       return Promise.resolve() as unknown as void;
     };
-    const open = new Set(['product', 'product/demo', 'models']);
+    const open = new Set(['product', 'product/demo', 'views']);
     const { rerender } = wrap(<NavPanel current="product/demo" expanded={open} onToggle={() => {}} />);
     expect(scrolled.at(-1)).toContain('Demo');
     rerender(
       <LedgerContext.Provider value={{ view, travel, landed }}>
-        <NavPanel current="models/widget.yaml" expanded={open} onToggle={() => {}} />
+        <NavPanel current="views/widget.yaml" expanded={open} onToggle={() => {}} />
       </LedgerContext.Provider>,
     );
     expect(scrolled.at(-1)).toContain('view:widget');
@@ -126,7 +126,7 @@ describe('the details panel', () => {
     expect(screen.getByText('app:parent-rule', { selector: 'code.decision-id' })).toBeTruthy();
     // the views it governs: the one it lists, and one a field token names
     fireEvent.click(within(own).getByRole('button', { name: 'view:widget' }));
-    expect(travel).toHaveBeenCalledWith('models/widget.yaml');
+    expect(travel).toHaveBeenCalledWith('views/widget.yaml');
     expect(within(own).getByText(/by a field token/).parentElement!.textContent).toContain('view:part');
     expect(screen.getByText("decision names 'app:x'")).toBeTruthy();
     cleanup();
@@ -212,7 +212,7 @@ describe('the details panel', () => {
     wrap(<DetailsPanel current="product/demo/parent-rule/online-only/deep-leaf.yaml" />);
     const decision = screen.getByRole('region', { name: 'the decision' });
     fireEvent.click(within(decision).getByRole('button', { name: 'field size of view:widget' }));
-    expect(travel).toHaveBeenCalledWith('models/widget.yaml', 'size');
+    expect(travel).toHaveBeenCalledWith('views/widget.yaml', 'size');
     expect(within(decision).queryByRole('button', { name: /colour/ })).toBeNull();
     expect(decision.textContent).toContain('never by {widget.colour}.');
     cleanup();
@@ -221,7 +221,7 @@ describe('the details panel', () => {
       scrolled.push(this.textContent ?? '');
       return Promise.resolve() as unknown as void;
     };
-    wrap(<DetailsPanel current="models/widget.yaml" field="size" />);
+    wrap(<DetailsPanel current="views/widget.yaml" field="size" />);
     const fields = screen.getByRole('table', { name: 'fields' });
     expect(within(fields).getByText('size').closest('tr')!.getAttribute('aria-current')).toBe('true');
     expect(within(fields).getByText('name').closest('tr')!.getAttribute('aria-current')).toBeNull();
@@ -233,7 +233,7 @@ describe('the details panel', () => {
 
   // @DecisionRef ui:views-read-as-fields — each typed field: type, citations, meaning; and links.
   it('reads a view as its typed fields, with its links', () => {
-    wrap(<DetailsPanel current="models/widget.yaml" />);
+    wrap(<DetailsPanel current="views/widget.yaml" />);
     const fields = screen.getByRole('table', { name: 'fields' });
     const size = within(fields).getByText('size').closest('tr')!;
     expect(within(size).getByText('int')).toBeTruthy();
@@ -248,7 +248,7 @@ describe('the details panel', () => {
 
   // @DecisionRef ui:views-not-changed-here — a view is read, never changed, in the UI.
   it('offers no way to change a view', () => {
-    wrap(<DetailsPanel current="models/widget.yaml" />);
+    wrap(<DetailsPanel current="views/widget.yaml" />);
     expect(screen.queryAllByRole('textbox')).toEqual([]);
     expect(screen.queryAllByRole('checkbox')).toEqual([]);
     const buttons = screen.queryAllByRole('button').map((b) => b.textContent);

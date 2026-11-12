@@ -255,8 +255,8 @@ describe('creating, moving and deleting nodes', () => {
     expect((await one({ op: 'create-node', parent: 'engineering', doc: { id: 'eng:second-practice', name: 'Second practice', decision: 'Twice.', rejected: ['once — too few'] } })).landedAt)
       .toBe('engineering/second-practice.yaml');
     expect(node('engineering/second-practice.yaml').rejected).toEqual(['once — too few']);
-    await expect(one({ op: 'create-node', parent: 'models', doc: { id: 'eng:x', name: 'X', decision: 'x' } }))
-      .rejects.toThrow(/models directory holds views, not nodes/);
+    await expect(one({ op: 'create-node', parent: 'views', doc: { id: 'eng:x', name: 'X', decision: 'x' } }))
+      .rejects.toThrow(/views directory holds views, not nodes/);
     await expect(one({ op: 'create-node', parent: 'engineering', doc: { id: 'nope:bad', name: 'Bad', decision: 'x' } }))
       .rejects.toThrow(/the check would fail/);
     await expect(one({ op: 'create-node', parent: 'engineering', doc: { id: 'eng:empty', name: 'Empty', decision: ' ' } }))
@@ -318,7 +318,7 @@ describe('creating, moving and deleting nodes', () => {
     expect(exists(repo, `ledger/${CHILD}`)).toBe(true);
     expect(git(repo, ['status', '--porcelain']).trim()).toBe('');
     expect(openLedger(dir).findings).toEqual([]);
-    await expect(one({ op: 'delete-node', place: 'models/widget.yaml' })).rejects.toThrow(/there is no node at models\/widget.yaml/);
+    await expect(one({ op: 'delete-node', place: 'views/widget.yaml' })).rejects.toThrow(/there is no node at views\/widget.yaml/);
   });
 
   it('a deletion the check would fail is refused: a view still cites a decision it removes', async () => {

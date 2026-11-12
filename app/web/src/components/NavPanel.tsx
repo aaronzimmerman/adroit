@@ -7,7 +7,7 @@ import { useLedger } from '../context.js';
  * any child as the current node.
  * @DecisionRef ui:see-the-ledger — every root walkable, any node locatable from here.
  * @DecisionRef ui:navigation-panel-left — the left panel, the hierarchy from the roots down.
- * @DecisionRef ui:one-layout-every-root — product, capabilities, engineering and models all
+ * @DecisionRef ui:one-layout-every-root — product, capabilities, engineering and views all
  * walk in this one tree.
  * @DecisionRef ui:up-a-level-down-another — up to the parent, then into any other subtree.
  * @DecisionRef ui:current-kept-in-view — the current row is scrolled into view whenever it changes.

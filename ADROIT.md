@@ -28,8 +28,8 @@ A ledger is a directory, conventionally `ledger/`, holding at most these entries
 - `capabilities/<name>/` — reusable subtrees, each grafted wherever its "how" repeats.
 - `engineering/` — decisions that shape code: platforms, postures, coding practices, UX
   principles, and the project's rulings about its own ledger practice.
-- `models/` — the typed **views**: the data shapes that cross section and trust boundaries in the
-  current implementation.
+- `views/` — the typed **views**: the ruled data shapes that cross section and trust
+  boundaries.
 - `domains.yaml` — the registry of id domains.
 
 Nothing else sits at the top level; a stray directory would hold files nobody checks. A ledger
@@ -109,8 +109,8 @@ context: >-                           # one free-form text: the author's own thi
   the history. Nothing in it may be needed to comply; anything that binds is a decision or part of
   what one rejected.
 - **No implementation state.** No node says what code must change, what is or isn't built yet, or
-  which code disagrees with it. The gap between decisions and code is found by comparing the two
-  and belongs to the build plan. The only described implementation state is the views.
+  which code disagrees with it. The gap between the ledger and the code is found by comparing the
+  two and belongs to the build plan.
 - **No workflow state.** Nodes carry no status. Superseded decisions are deleted, not marked.
   `dubious` and `questions` are maintenance notes, not workflow steps.
 
@@ -178,10 +178,11 @@ are never weighed as law.
 
 ## Views
 
-`models/` holds only **views**: the typed data shapes — transfer objects — that move between
-sections of the system or across a trust boundary. A view describes the implementation as it
-stands; it is not a decision tree. A view is one shape that crosses a boundary, never one per
-screen, and invariants at rest are stated as observable promises through the views that expose
+`views/` holds only **views**: the typed data shapes — transfer objects — that move between
+sections of the system or across a trust boundary. A view is a ruling like any other: its shape is
+authored in the ledger, in conjunction with the decisions it serves, and the code is brought into
+line with it. It is not a decision tree. A view is one shape that crosses a boundary, never one
+per screen, and invariants at rest are stated as observable promises through the views that expose
 them. Storage is memorialized by the project's migrations and code, never mirrored in the ledger.
 
 A view file holds an `id` (`view:<slug>`), a short `decision` statement of the concept, a typed
@@ -207,9 +208,9 @@ links:
 - **Citations are the wiring.** Every id a field cites must resolve; those citations link the
   shape to the decisions that rule it. A field citing nothing is reported as a probable orphan,
   never failed.
-- **A view states current truth.** It has no tables and no pending shape: a ruled but unbuilt
-  shape lives in the decisions that reference the view, and the view changes when the
-  implementation does.
+- **A view states the ruled shape.** It has no tables and no staged form: the schema is the shape
+  as ruled, and code being out of step is compliance work, never cause to hold the schema back. A
+  shape is authored in the schema and nowhere else; no decision restates one in prose.
 - **Links.** `consumes` names only other views; `grounds` names the principles a view grounds in.
 - **A shape change is planned wide.** Before a view's shape changes, walk its referrers and address
   every one: each is declared unaffected, or given a decision at its own node saying how the new
@@ -241,7 +242,10 @@ the node is not suspect. It says the node's validity is not assured.
   context makes every descendant suspect, and, for a node inside a capability, every node that
   includes that capability, directly or through another capability it includes, with its
   descendants. Deleting a node inside a capability makes every includer of that capability
-  suspect the same way. Moving a node makes the moved subtree suspect, since its reading changed. Asking, answering or dropping a question makes nothing suspect.
+  suspect the same way. Moving a node makes the moved subtree suspect, since its reading changed.
+  An edit to a view's schema makes every decision that references the view, explicitly or through
+  a field token, suspect, with its descendants. Asking, answering or dropping a question makes
+  nothing suspect.
 - **How it is written.** The commit that makes a change writes the mark onto every suspect,
   naming the node whose change made it suspect; the mark always lands, and reading a suspect
   before the commit clears nothing. A person can also
@@ -305,9 +309,9 @@ that resolve it, or dropped as unhelpful. While it stays, it is future work.
 - **Rewrite over patch.** A node patched more than twice is rewritten whole. Every programmatic
   edit verifies its anchor matched and its result landed; a work log records verified results,
   never the plan.
-- **The ledger leads, the code follows.** Change a decision in the ledger first, at any time; code
-  being out of step is never a reason to hold a ruling back. Bringing code into compliance is its
-  own follow-up act, and the citations that go red are its worklist.
+- **The ledger leads, the code follows.** Change a decision, or a view's shape, in the ledger
+  first, at any time; code being out of step is never a reason to hold a ruling back. Bringing
+  code into compliance is its own follow-up act, and the citations that go red are its worklist.
 - **UX change finds the decision.** Fix an output by finding the decision whose property makes it
   wrong and changing that, never by specifying a screen.
 - **The report is the diff.** A cycle's decision report is `git diff ledger/`. Beside it, log one

@@ -29,7 +29,7 @@ export function DetailsPanel({ current, field }: { current: string; field?: stri
             </>
           )}
           <Children place={current} />
-          {(place.kind === 'root' || place.kind === 'dir') && current !== '' && !current.startsWith('models') && <Structure place={current} />}
+          {(place.kind === 'root' || place.kind === 'dir') && current !== '' && !current.startsWith('views') && <Structure place={current} />}
         </article>
       )}
     </aside>

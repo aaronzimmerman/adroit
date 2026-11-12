@@ -47,7 +47,7 @@ describe('findings are the check\'s own', () => {
       },
       'engineering/dup.yaml': { id: 'eng:sample-practice', name: 'Dup', decision: 'Again.' },
       'capabilities/orphan/leaf.yaml': { id: 'orphan:leaf', name: 'Leaf', decision: 'A leaf.' },
-      'models/part.yaml': { id: 'view:part', decision: 'A part.', schema: { fields: { label: 'strng (app:nope)' } }, pending: {} },
+      'views/part.yaml': { id: 'view:part', decision: 'A part.', schema: { fields: { label: 'strng (app:nope)' } }, pending: {} },
       'product/demo/old-format.yaml': { name: 'Old format', decisions: [{ id: 'app:old-format', decision: 'Written as a list.' }] },
     });
     const dir = ledgerOf(repo);
@@ -83,13 +83,13 @@ describe('findings are the check\'s own', () => {
       'product/demo/sibling.yaml': { id: 'app:sibling', name: 'Sibling', decision: 'A sibling rule.', includes: ['nope'] },
       'capabilities/orphan/leaf.yaml': { id: 'orphan:leaf', name: 'Leaf', decision: 'A leaf.' },
       'product/demo/parent-rule/child-rule.yaml': { id: 'app:child-rule', name: 'Child rule', decision: 'Follows app:parent-rule.' },
-      'models/part.yaml': { id: 'view:part', decision: 'A part.', schema: { fields: { label: 'strng' } } },
+      'views/part.yaml': { id: 'view:part', decision: 'A part.', schema: { fields: { label: 'strng' } } },
     });
     const places = Object.fromEntries(openLedger(ledgerOf(repo)).findings.map((f) => [f.rule, f.place]));
     expect(places.includes).toBe('product/demo/sibling.yaml');
     expect(places['capability-root']).toBe('capabilities/orphan');
     expect(places['id-in-decision-text']).toBe('product/demo/parent-rule/child-rule.yaml');
-    expect(places['schema-type']).toBe('models/part.yaml');
+    expect(places['schema-type']).toBe('views/part.yaml');
   });
 
   it('this repository\'s own ledger opens with no findings', () => {
@@ -102,17 +102,17 @@ describe('the view', () => {
   it('lays every root out as places, the hierarchy being the filesystem', async () => {
     repo = makeFixtureRepo();
     const v = await view(ledgerOf(repo));
-    expect(v.roots).toEqual(['product', 'capabilities', 'engineering', 'models', 'domains.yaml']);
+    expect(v.roots).toEqual(['product', 'capabilities', 'engineering', 'views', 'domains.yaml']);
     expect(v.places.product.children).toEqual(['product/demo']);
     expect(v.places['product/demo'].kind).toBe('node');
     expect(v.places['product/demo'].label).toBe('Demo');
     expect(v.places['product/demo'].children).toEqual(['product/demo/parent-rule', 'product/demo/sibling.yaml']);
     expect(v.places['product/demo/parent-rule'].parent).toBe('product/demo');
-    expect(v.places['models/widget.yaml'].kind).toBe('view');
-    expect(v.places['models/widget.yaml'].label).toBe('view:widget');
+    expect(v.places['views/widget.yaml'].kind).toBe('view');
+    expect(v.places['views/widget.yaml'].label).toBe('view:widget');
     expect(v.corpus).toBe('fixture');
     expect(v.ids['app:deep-leaf']).toBe('product/demo/parent-rule/online-only/deep-leaf.yaml');
-    expect(v.ids['view:part']).toBe('models/part.yaml');
+    expect(v.ids['view:part']).toBe('views/part.yaml');
   });
 
   // @DecisionRef ui:trace-dependence — the path down to the node.
@@ -145,14 +145,14 @@ describe('the view', () => {
   // @DecisionRef ui:views-read-as-fields — each typed field with its type, citations and meaning.
   it('reads a view as its typed fields, with its links', async () => {
     repo = makeFixtureRepo({
-      'models/part.yaml': {
+      'views/part.yaml': {
         id: 'view:part',
         decision: 'One part of a widget.',
         schema: { fields: { label: 'string (app:sibling, app:child-rule) — what the part is called', weight: 'nonsense here' } },
       },
     });
     const v = await view(ledgerOf(repo));
-    expect(v.places['models/widget.yaml'].view).toEqual({
+    expect(v.places['views/widget.yaml'].view).toEqual({
       id: 'view:widget',
       decision: 'One widget, as the demo shows it.',
       rejected: [],
@@ -164,17 +164,17 @@ describe('the view', () => {
       consumes: ['view:part'],
       grounds: [],
     });
-    const part = v.places['models/part.yaml'].view!;
+    const part = v.places['views/part.yaml'].view!;
     expect(part.fields[0].cites).toEqual(['app:sibling', 'app:child-rule']);
     // a field that does not parse still shows, as written
     expect(part.fields[1]).toMatchObject({ name: 'weight', type: '?', raw: 'nonsense here' });
   });
 
-  it('a file under models that is no view is shown as a plain file', async () => {
-    repo = makeFixtureRepo({ 'models/pending-changes/add-colour.yaml': { name: 'add-colour', state: 'begun' } });
+  it('a file under views that is no view is shown as a plain file', async () => {
+    repo = makeFixtureRepo({ 'views/pending-changes/add-colour.yaml': { name: 'add-colour', state: 'begun' } });
     const v = await view(ledgerOf(repo));
-    expect(v.places['models/pending-changes/add-colour.yaml'].kind).toBe('file');
-    expect(v.places['models/pending-changes/add-colour.yaml'].view).toBeUndefined();
+    expect(v.places['views/pending-changes/add-colour.yaml'].kind).toBe('file');
+    expect(v.places['views/pending-changes/add-colour.yaml'].view).toBeUndefined();
   });
 
   // @DecisionRef ui:ruling-shows-one-state — in-flight edits show as the working diff.

@@ -208,8 +208,8 @@ function clearMark(plan: Plan, rel: string, raw: Doc, clear: boolean | undefined
  * A leaf that gains a child becomes a directory holding its own self.yaml. */
 function targetDir(plan: Plan, parent: string): { dir: string; treeRoot: boolean } {
   if (parent === '') throw new Refusal('choose a root or a node to place it beneath');
-  if (parent === 'models' || parent.startsWith('models/')) {
-    throw new Refusal('the models directory holds views, not nodes');
+  if (parent === 'views' || parent.startsWith('views/')) {
+    throw new Refusal('the views directory holds views, not nodes');
   }
   if (parent === 'product' || parent === 'capabilities') return { dir: parent, treeRoot: true };
   if (parent === 'engineering') return { dir: parent, treeRoot: false };
@@ -221,7 +221,7 @@ function targetDir(plan: Plan, parent: string): { dir: string; treeRoot: boolean
     plan.move(parent, `${dir}/${SELF}`);
     return { dir, treeRoot: false };
   }
-  if (plan.isDir(parent) && !parent.startsWith('models')) return { dir: parent, treeRoot: false };
+  if (plan.isDir(parent) && !parent.startsWith('views')) return { dir: parent, treeRoot: false };
   throw new Refusal(`there is no place ${parent} to put it beneath`);
 }
 

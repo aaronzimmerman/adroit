@@ -10,7 +10,7 @@ type Form = 'add' | 'move' | 'extract' | null;
 function parentChoices(places: Record<string, Place>, own?: string): string[] {
   return Object.values(places)
     .filter((p) => p.path !== '' && (p.kind === 'node' || p.kind === 'dir' || ['product', 'capabilities', 'engineering'].includes(p.path)))
-    .filter((p) => p.path !== 'models' && !p.path.startsWith('models/'))
+    .filter((p) => p.path !== 'views' && !p.path.startsWith('views/'))
     .filter((p) => !own || (p.path !== own && !p.path.startsWith(`${own}/`)))
     .map((p) => p.path)
     .sort();

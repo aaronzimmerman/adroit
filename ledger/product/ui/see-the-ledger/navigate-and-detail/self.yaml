@@ -10,4 +10,4 @@ rejected:
 context: >-
   "a navigation panel on the left that lets me go up and down the hierarchy and then a details panel
   on the right with the current node's decisions, and the ability to edit... a lot of the star-field
-  stuff goes away, it isn't really helpful"; models keep their own read because they are not nodes.
+  stuff goes away, it isn't really helpful"; views keep their own read because they are not nodes.

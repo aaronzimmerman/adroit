@@ -11,7 +11,7 @@
 (() => {
   'use strict';
 
-  const MODES = ['hierarchy', 'capabilities', 'models'];
+  const MODES = ['hierarchy', 'capabilities', 'views'];
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const get = async (url) => {
@@ -66,7 +66,7 @@
     if (S.host !== host) { S.host = host; frame(host); }
     if (mode === 'hierarchy') return hierarchy();
     if (mode === 'capabilities') return capabilities();
-    if (mode === 'models') return models();
+    if (mode === 'views') return viewsMode();
   }
 
   // ------------------------------------------------------- the detail panel
@@ -371,7 +371,7 @@
   // ------------------------------------------------------------------ VIEWS
   // The catalog of typed views: each box a view's fields, each line a ref<view:…> a field carries or
   // a view another consumes. Storage is not drawn — it lives in the code, in its migrations and models.
-  async function models() {
+  async function viewsMode() {
     const main = $('#v-main');
     if (!S.erd) {
       S.erd = await get('/api/erd');

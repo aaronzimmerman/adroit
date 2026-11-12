@@ -21,8 +21,8 @@ describe('search', () => {
   it('finds any text: a rejected alternative, context, a view\'s field name, a question', async () => {
     expect((await search('too chaotic'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'rejected 1' });
     expect((await search('know'))[0]).toMatchObject({ place: 'product/demo/parent-rule', field: 'context' });
-    expect((await search('parts'))[0]).toMatchObject({ place: 'models/widget.yaml', field: 'field parts' });
-    expect((await search('widget name')).map((h) => h.place)).toContain('models/widget.yaml');
+    expect((await search('parts'))[0]).toMatchObject({ place: 'views/widget.yaml', field: 'field parts' });
+    expect((await search('widget name')).map((h) => h.place)).toContain('views/widget.yaml');
     expect((await search('Quiet hours'))[0]).toMatchObject({ place: 'capabilities/notify/quiet-hours.yaml', field: 'name' });
     expect((await search('accounts'))[0]).toMatchObject({ place: 'product/demo', field: 'question 1' });
   });
